@@ -529,10 +529,17 @@ export async function kickMember(serverId: string, userId: string) {
 
 export async function saveChannel(c: Partial<Channel> & { server_id: string; kind: "text" | "category" }) {
   const fields = { name: c.name, topic: c.topic ?? "", parent_id: c.parent_id ?? null, position: c.position ?? 0 };
-  const q = c.id
-    ? supabase.from("fogon_channels").update(fields).eq("id", c.id)
-    : supabase.from("fogon_channels").insert({ ...fields, server_id: c.server_id, kind: c.kind });
-  const { data, error } = await q.select("*").single();
+  let id = c.id;
+  if (id) {
+    const { error } = await supabase.from("fogon_channels").update(fields).eq("id", id);
+    if (error) throw error;
+  } else {
+    // sin RETURNING: la regla de lectura no ve la fila nueva dentro del mismo INSERT
+    id = crypto.randomUUID();
+    const { error } = await supabase.from("fogon_channels").insert({ ...fields, id, server_id: c.server_id, kind: c.kind });
+    if (error) throw error;
+  }
+  const { data, error } = await supabase.from("fogon_channels").select("*").eq("id", id).single();
   if (error) throw error;
   setState((s) => ({ channels: { ...s.channels, [data.id]: data as Channel } }));
   return data as Channel;
