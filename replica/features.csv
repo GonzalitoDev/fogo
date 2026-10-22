@@ -1,0 +1,32 @@
+feature,area,priority,original,clone,notes
+Registro e inicio de sesión con email,cuenta,must,yes,no,Supabase Auth
+Perfil: nombre de usuario y nombre visible,cuenta,must,yes,no,
+Crear servidor,servidores,must,yes,no,crea #general automáticamente
+Rail de servidores con el activo marcado,servidores,must,yes,no,S02
+Invitar con link y unirse,servidores,must,yes,no,F04 /invite/:code
+Canales de texto agrupados en categorías,canales,must,yes,no,S03
+Crear / renombrar / borrar canales (dueño),canales,must,yes,no,S10
+Mensajes en tiempo real,mensajes,must,yes,no,F02 Supabase Realtime
+Historial con carga hacia arriba,mensajes,must,yes,no,paginación por created_at
+Mensajes agrupados por autor,mensajes,must,yes,no,mismo autor < 7 min
+@menciones con autocompletar y resaltado,mensajes,must,yes,no,F03
+Mensajes directos 1 a 1,dms,must,yes,no,F09
+Editar y borrar mensajes propios,mensajes,must,yes,no,F06 (editado)
+Reacciones con emoji,mensajes,must,yes,no,F05
+Imágenes adjuntas (subir / pegar / arrastrar),mensajes,must,yes,no,F08 Supabase Storage ≤10 MB
+Nadie lee servidores ni DMs ajenos,seguridad,must,yes,no,RLS + Realtime autorizado
+Responder citando un mensaje,mensajes,should,yes,no,F07
+No leídos y contador de menciones,navegación,should,yes,no,F10
+Lista de miembros,servidores,should,yes,no,S06
+Markdown básico (negrita cursiva código links),mensajes,should,yes,no,render seguro sin HTML
+Quick switcher Ctrl+K,navegación,should,yes,no,S12
+Editar el último mensaje con flecha arriba,teclado,should,yes,no,
+Envío optimista y reintento si falla,mensajes,should,yes,no,
+Responsive / celular,general,should,yes,no,
+Presencia online y "escribiendo…",tiempo real,could,yes,no,no elegido para v1
+Fijar mensajes,mensajes,could,yes,no,
+Búsqueda de mensajes,búsqueda,could,yes,no,
+Roles y permisos por canal,servidores,could,yes,no,
+Voz y video,voz,skip,yes,skip,otro proyecto (WebRTC)
+Nitro / stickers / boosts,monetización,skip,yes,skip,propio de Discord
+Bots y API pública,integraciones,skip,yes,skip,posible fase 2

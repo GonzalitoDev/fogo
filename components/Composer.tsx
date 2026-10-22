@@ -1,0 +1,247 @@
+"use client";
+
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { activeTrigger, filterProfiles, IMAGE_TYPES, MAX_FILE, MAX_LEN } from "@/lib/chat";
+import { sendMessage, toast } from "@/lib/store";
+import type { Channel, Message, Profile } from "@/lib/types";
+import { Icon } from "./Icon";
+import { Avatar } from "./ui";
+
+export type ComposerHandle = { addFiles: (f: File[]) => void; focus: () => void; mention: (username: string) => void };
+
+const drafts = new Map<string, string>();
+
+type Props = {
+  channelId: string;
+  placeholder: string;
+  people: Profile[];
+  channels: Channel[];
+  replyTo: Message | null;
+  replyAuthor?: Profile;
+  onCancelReply: () => void;
+  onEditLast: () => void;
+};
+
+export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, ref) {
+  const [text, setText] = useState(() => drafts.get(p.channelId) ?? "");
+  const [files, setFiles] = useState<{ file: File; url: string }[]>([]);
+  const [caret, setCaret] = useState(0);
+  const [sel, setSel] = useState(0);
+  const [dismissed, setDismissed] = useState<number | null>(null);
+  const ta = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // cambia el canal: guarda el borrador y carga el del nuevo
+  const [lastChannel, setLastChannel] = useState(p.channelId);
+  if (lastChannel !== p.channelId) {
+    setLastChannel(p.channelId);
+    setText(drafts.get(p.channelId) ?? "");
+    setFiles([]);
+  }
+  useEffect(() => {
+    drafts.set(p.channelId, text);
+  }, [text, p.channelId]);
+  useEffect(() => {
+    ta.current?.focus();
+  }, [p.channelId, p.replyTo?.id]);
+  useEffect(() => {
+    const el = ta.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, window.innerHeight * 0.4)}px`;
+  }, [text]);
+
+  const addFiles = (list: File[]) => {
+    const ok: { file: File; url: string }[] = [];
+    for (const f of list) {
+      if (!IMAGE_TYPES.includes(f.type)) {
+        toast(`“${f.name}” no es una imagen. Se pueden mandar PNG, JPG, GIF o WebP.`, "error");
+        continue;
+      }
+      if (f.size > MAX_FILE) {
+        toast(`“${f.name}” pesa más de 10 MB.`, "error");
+        continue;
+      }
+      ok.push({ file: f, url: URL.createObjectURL(f) });
+    }
+    setFiles((cur) => {
+      const next = [...cur, ...ok];
+      if (next.length > 4) toast("Hasta 4 imágenes por mensaje.", "error");
+      return next.slice(0, 4);
+    });
+  };
+
+  useImperativeHandle(ref, () => ({
+    addFiles,
+    focus: () => ta.current?.focus(),
+    mention: (username) => {
+      setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}@${username} `);
+      setTimeout(() => ta.current?.focus());
+    },
+  }));
+
+  const trig = activeTrigger(text, caret);
+  const suggestions = useMemo(() => {
+    if (!trig || dismissed === trig.start) return null;
+    if (trig.char === "@") {
+      const list = filterProfiles(p.people, trig.query);
+      return list.length ? { kind: "@" as const, list } : null;
+    }
+    const list = p.channels.filter((c) => c.name.includes(trig.query)).slice(0, 8);
+    return list.length ? { kind: "#" as const, list } : null;
+  }, [trig?.char, trig?.query, trig?.start, dismissed, p.people, p.channels]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const complete = (value: string) => {
+    if (!trig) return;
+    const before = text.slice(0, trig.start);
+    const after = text.slice(caret);
+    const insert = `${trig.char}${value} `;
+    const next = before + insert + after.replace(/^\S*/, "");
+    setText(next);
+    const pos = (before + insert).length;
+    setCaret(pos);
+    setSel(0);
+    requestAnimationFrame(() => {
+      ta.current?.setSelectionRange(pos, pos);
+      ta.current?.focus();
+    });
+  };
+
+  const send = () => {
+    const content = text.trim();
+    if (!content && !files.length) return;
+    if (content.length > MAX_LEN) return toast(`El mensaje tiene ${content.length} caracteres; el máximo es ${MAX_LEN}.`, "error");
+    void sendMessage(p.channelId, content, files.map((f) => f.file), p.replyTo?.id ?? null);
+    setText("");
+    setFiles([]);
+    drafts.delete(p.channelId);
+    p.onCancelReply();
+  };
+
+  const count = text.trim().length;
+
+  return (
+    <div className="composer">
+      {suggestions && (
+        <div className="suggest" role="listbox" aria-label={suggestions.kind === "@" ? "Personas" : "Canales"}>
+          <div className="title">{suggestions.kind === "@" ? "Personas" : "Canales"}</div>
+          {suggestions.kind === "@"
+            ? suggestions.list.map((u, i) => (
+                <button key={u.id} role="option" aria-selected={i === sel} onMouseDown={(e) => e.preventDefault()} onClick={() => complete(u.username)}>
+                  <Avatar p={u} size="xs" />
+                  <b>{u.display_name}</b>
+                  <span className="sub">@{u.username}</span>
+                </button>
+              ))
+            : suggestions.list.map((c, i) => (
+                <button key={c.id} role="option" aria-selected={i === sel} onMouseDown={(e) => e.preventDefault()} onClick={() => complete(c.name)}>
+                  <Icon name="hash" />
+                  {c.name}
+                </button>
+              ))}
+        </div>
+      )}
+      <div className="composer-box">
+        {p.replyTo && (
+          <div className="composer-bar">
+            <span>
+              Respondiendo a <b>{p.replyAuthor?.display_name ?? "…"}</b>
+            </span>
+            <span className="spacer" />
+            <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={p.onCancelReply} aria-label="Cancelar respuesta">
+              <Icon name="close" />
+            </button>
+          </div>
+        )}
+        {files.length > 0 && (
+          <div className="previews">
+            {files.map((f, i) => (
+              <div className="preview" key={f.url}>
+                <img src={f.url} alt={f.file.name} />
+                <button className="icon-btn" onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))} aria-label={`Quitar ${f.file.name}`}>
+                  <Icon name="close" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="composer-row">
+          <button className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Adjuntar imagen" title="Adjuntar imagen">
+            <Icon name="image" />
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept={IMAGE_TYPES.join(",")}
+            multiple
+            hidden
+            onChange={(e) => {
+              addFiles([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+          <textarea
+            id={`composer-${p.channelId}`}
+            ref={ta}
+            rows={1}
+            value={text}
+            placeholder={p.placeholder}
+            aria-label={p.placeholder}
+            onChange={(e) => {
+              setText(e.target.value);
+              setCaret(e.target.selectionStart);
+              setSel(0);
+              setDismissed(null);
+            }}
+            onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
+            onPaste={(e) => {
+              const imgs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+              if (imgs.length) {
+                e.preventDefault();
+                addFiles(imgs);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (suggestions) {
+                const n = suggestions.list.length;
+                if (e.key === "ArrowDown") return e.preventDefault(), setSel((s) => (s + 1) % n);
+                if (e.key === "ArrowUp") return e.preventDefault(), setSel((s) => (s - 1 + n) % n);
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  const item = suggestions.list[sel];
+                  return complete("username" in item ? item.username : item.name);
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return setDismissed(trig!.start);
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+              if (e.key === "ArrowUp" && !text) {
+                e.preventDefault();
+                p.onEditLast();
+              }
+              if (e.key === "Escape" && p.replyTo) {
+                e.preventDefault();
+                e.stopPropagation();
+                p.onCancelReply();
+              }
+            }}
+          />
+          <button className="icon-btn" onClick={send} aria-label="Enviar" title="Enviar (Enter)" disabled={!count && !files.length}>
+            <Icon name="send" />
+          </button>
+        </div>
+      </div>
+      {count > MAX_LEN - 200 && (
+        <span className={`count${count > MAX_LEN ? " over" : ""}`}>
+          {count}/{MAX_LEN}
+        </span>
+      )}
+    </div>
+  );
+});

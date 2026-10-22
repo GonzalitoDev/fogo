@@ -1,0 +1,713 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+import type { RealtimeChannel, Session } from "@supabase/supabase-js";
+import { BUCKET, supabase } from "./supabase";
+import { friendlyError, upsertMessage } from "./chat";
+import type { Attachment, Channel, Message, Place, Profile, Reaction, Server, Unread } from "./types";
+
+/* ---------- store mínimo ---------- */
+
+type ChannelMessages = { list: Message[]; loaded: boolean; hasMore: boolean; loading: boolean };
+
+export type State = {
+  ready: boolean;
+  session: Session | null;
+  me: Profile | null;
+  needsProfile: boolean;
+  servers: Record<string, Server>;
+  channels: Record<string, Channel>;
+  members: Record<string, string[]>; // serverId -> userIds
+  dmPeers: Record<string, string>; // channelId -> userId del otro
+  profiles: Record<string, Profile>;
+  messages: Record<string, ChannelMessages>;
+  reactions: Record<string, Reaction[]>; // messageId -> reacciones
+  replyCache: Record<string, Message | null>; // mensajes citados que no están cargados
+  unread: Record<string, Unread>;
+  place: Place;
+  online: boolean;
+  toast: { id: number; text: string; tone: "info" | "error" } | null;
+};
+
+const initial: State = {
+  ready: false,
+  session: null,
+  me: null,
+  needsProfile: false,
+  servers: {},
+  channels: {},
+  members: {},
+  dmPeers: {},
+  profiles: {},
+  messages: {},
+  reactions: {},
+  replyCache: {},
+  unread: {},
+  place: { kind: "dm", channelId: null },
+  online: true,
+  toast: null,
+};
+
+let state: State = initial;
+const listeners = new Set<() => void>();
+
+export const getState = () => state;
+export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
+  const p = typeof patch === "function" ? patch(state) : patch;
+  state = { ...state, ...p };
+  listeners.forEach((l) => l());
+}
+function subscribe(l: () => void) {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+export function useStore<T>(sel: (s: State) => T): T {
+  return useSyncExternalStore(subscribe, () => sel(state), () => sel(initial));
+}
+
+let toastId = 0;
+export function toast(text: string, tone: "info" | "error" = "info") {
+  setState({ toast: { id: ++toastId, text, tone } });
+}
+export function fail(e: unknown) {
+  toast(friendlyError(e), "error");
+}
+
+const meId = () => state.session?.user.id ?? "";
+
+/* ---------- lugar actual (en el hash para que sobreviva a recargar) ---------- */
+
+export function placeFromHash(): Place {
+  const h = typeof location === "undefined" ? "" : location.hash.replace(/^#\/?/, "");
+  const [kind, a, b] = h.split("/");
+  if (kind === "s" && a) return { kind: "server", serverId: a, channelId: b || null };
+  if (kind === "dm") return { kind: "dm", channelId: a || null };
+  return { kind: "dm", channelId: null };
+}
+
+export function go(place: Place) {
+  const hash = place.kind === "server" ? `#/s/${place.serverId}${place.channelId ? `/${place.channelId}` : ""}` : `#/dm${place.channelId ? `/${place.channelId}` : ""}`;
+  if (location.hash !== hash) history.replaceState(null, "", hash);
+  // si el canal no viene, el primero de texto del servidor
+  if (place.kind === "server" && !place.channelId) {
+    const first = firstChannel(place.serverId);
+    if (first) return go({ ...place, channelId: first });
+  }
+  setState({ place });
+  if (place.channelId) {
+    try {
+      if (place.kind === "server") localStorage.setItem(`fogon:last:${place.serverId}`, place.channelId);
+    } catch {}
+    openChannel(place.channelId);
+  }
+}
+
+function firstChannel(serverId: string): string | null {
+  try {
+    const last = localStorage.getItem(`fogon:last:${serverId}`);
+    if (last && state.channels[last]?.server_id === serverId) return last;
+  } catch {}
+  const texts = Object.values(state.channels)
+    .filter((c) => c.server_id === serverId && c.kind === "text")
+    .sort((a, b) => {
+      const pa = a.parent_id ? state.channels[a.parent_id]?.position ?? 0 : -1;
+      const pb = b.parent_id ? state.channels[b.parent_id]?.position ?? 0 : -1;
+      return pa - pb || a.position - b.position || a.created_at.localeCompare(b.created_at);
+    });
+  return texts[0]?.id ?? null;
+}
+
+/* ---------- sesión ---------- */
+
+export async function boot() {
+  const { data } = await supabase.auth.getSession();
+  await onSession(data.session);
+  supabase.auth.onAuthStateChange((_ev, session) => {
+    if ((session?.user.id ?? null) !== (state.session?.user.id ?? null)) void onSession(session);
+    else setState({ session });
+  });
+  window.addEventListener("hashchange", () => {
+    if (state.me) go(placeFromHash());
+  });
+  window.addEventListener("online", () => setState({ online: true }));
+  window.addEventListener("offline", () => setState({ online: false }));
+  document.addEventListener("visibilitychange", () => {
+    const ch = state.place.channelId;
+    if (document.visibilityState === "visible" && ch && state.unread[ch]?.unread) markRead(ch);
+  });
+}
+
+async function onSession(session: Session | null) {
+  stopRealtime();
+  setState({ ...initial, session, ready: false, online: typeof navigator === "undefined" ? true : navigator.onLine });
+  if (!session) return setState({ ready: true });
+  const { data: me, error } = await supabase.from("fogon_profiles").select("id,username,display_name,color").eq("id", session.user.id).maybeSingle();
+  if (error) {
+    fail(error);
+    return setState({ ready: true });
+  }
+  if (!me) return setState({ ready: true, needsProfile: true });
+  setState({ me, profiles: { [me.id]: me } });
+  await loadAll();
+  startRealtime();
+  setState({ ready: true });
+  const p = placeFromHash();
+  if (p.kind === "server" && !state.servers[p.serverId]) go({ kind: "dm", channelId: null });
+  else go(p);
+}
+
+export async function createProfile(username: string, displayName: string, color: string) {
+  const id = meId();
+  const { error } = await supabase.from("fogon_profiles").insert({ id, username: username.toLowerCase(), display_name: displayName.trim(), color });
+  if (error) throw error;
+  await onSession(state.session);
+}
+
+export async function updateProfile(displayName: string, color: string) {
+  const { data, error } = await supabase
+    .from("fogon_profiles")
+    .update({ display_name: displayName.trim(), color })
+    .eq("id", meId())
+    .select("id,username,display_name,color")
+    .single();
+  if (error) throw error;
+  setState((s) => ({ me: data, profiles: { ...s.profiles, [data.id]: data } }));
+}
+
+export async function signOut() {
+  await supabase.auth.signOut();
+}
+
+/* ---------- carga inicial ---------- */
+
+type MemberRow = { server_id: string; user_id: string; profile: Profile | null };
+type DmRow = { channel_id: string; user_id: string; profile: Profile | null };
+
+export async function loadAll() {
+  const [servers, channels, members, dms, unread] = await Promise.all([
+    supabase.from("fogon_servers").select("*"),
+    supabase.from("fogon_channels").select("*"),
+    supabase.from("fogon_members").select("server_id,user_id,profile:fogon_profiles(id,username,display_name,color)"),
+    supabase.from("fogon_dm_participants").select("channel_id,user_id,profile:fogon_profiles(id,username,display_name,color)"),
+    supabase.rpc("fogon_unread"),
+  ]);
+  const err = servers.error || channels.error || members.error || dms.error || unread.error;
+  if (err) return fail(err);
+  const profiles: Record<string, Profile> = { ...state.profiles };
+  const mem: Record<string, string[]> = {};
+  for (const r of members.data as unknown as MemberRow[]) {
+    (mem[r.server_id] ??= []).push(r.user_id);
+    if (r.profile) profiles[r.profile.id] = r.profile;
+  }
+  const peers: Record<string, string> = {};
+  for (const r of dms.data as unknown as DmRow[]) {
+    if (r.profile) profiles[r.profile.id] = r.profile;
+    if (r.user_id !== meId()) peers[r.channel_id] = r.user_id;
+  }
+  const un: Record<string, Unread> = {};
+  for (const r of (unread.data ?? []) as { channel_id: string; unread: boolean; mentions: number }[]) un[r.channel_id] = { unread: r.unread, mentions: Number(r.mentions) };
+  setState({
+    servers: Object.fromEntries((servers.data as Server[]).map((x) => [x.id, x])),
+    channels: Object.fromEntries((channels.data as Channel[]).map((x) => [x.id, x])),
+    members: mem,
+    dmPeers: peers,
+    profiles,
+    unread: un,
+  });
+}
+
+async function ensureProfiles(ids: string[]) {
+  const missing = [...new Set(ids)].filter((id) => id && !state.profiles[id]);
+  if (!missing.length) return;
+  const { data } = await supabase.from("fogon_profiles").select("id,username,display_name,color").in("id", missing);
+  if (data?.length) setState((s) => ({ profiles: { ...s.profiles, ...Object.fromEntries(data.map((p) => [p.id, p])) } }));
+}
+
+/* ---------- mensajes ---------- */
+
+const PAGE = 50;
+type Row = Message & { fogon_reactions?: Reaction[] };
+
+function ingest(rows: Row[]) {
+  const reactions: Record<string, Reaction[]> = {};
+  const msgs = rows.map(({ fogon_reactions, ...m }) => {
+    reactions[m.id] = fogon_reactions ?? [];
+    return { ...m, attachments: m.attachments ?? [], mentions: m.mentions ?? [] } as Message;
+  });
+  setState((s) => ({ reactions: { ...s.reactions, ...reactions } }));
+  void ensureProfiles(msgs.map((m) => m.author_id));
+  void loadReplies(msgs);
+  return msgs;
+}
+
+async function loadReplies(msgs: Message[]) {
+  const have = new Set(Object.values(state.messages).flatMap((c) => c.list.map((m) => m.id)));
+  const ids = [...new Set(msgs.map((m) => m.reply_to_id).filter((id): id is string => !!id && !have.has(id) && !(id in state.replyCache)))];
+  if (!ids.length) return;
+  const { data } = await supabase.from("fogon_messages").select("*").in("id", ids);
+  const found = Object.fromEntries((data ?? []).map((m) => [m.id, m as Message]));
+  setState((s) => ({ replyCache: { ...s.replyCache, ...Object.fromEntries(ids.map((id) => [id, found[id] ?? null])) } }));
+  void ensureProfiles((data ?? []).map((m) => m.author_id));
+}
+
+function setChannelMessages(id: string, patch: Partial<ChannelMessages>) {
+  setState((s) => {
+    const cur = s.messages[id] ?? { list: [], loaded: false, hasMore: true, loading: false };
+    return { messages: { ...s.messages, [id]: { ...cur, ...patch } } };
+  });
+}
+
+export async function openChannel(id: string) {
+  markRead(id);
+  const cur = state.messages[id];
+  if (cur?.loaded || cur?.loading) return;
+  setChannelMessages(id, { loading: true });
+  const { data, error } = await supabase
+    .from("fogon_messages")
+    .select("*, fogon_reactions(message_id,user_id,emoji)")
+    .eq("channel_id", id)
+    .order("created_at", { ascending: false })
+    .limit(PAGE);
+  if (error) {
+    setChannelMessages(id, { loading: false });
+    return fail(error);
+  }
+  const msgs = ingest(data as Row[]).reverse();
+  setState((s) => {
+    // pueden haber llegado mensajes por Realtime mientras cargaba
+    let list = msgs;
+    for (const m of s.messages[id]?.list ?? []) list = upsertMessage(list, m);
+    return { messages: { ...s.messages, [id]: { list, loaded: true, hasMore: msgs.length === PAGE, loading: false } } };
+  });
+}
+
+export async function loadOlder(id: string) {
+  const cur = state.messages[id];
+  if (!cur || cur.loading || !cur.hasMore) return;
+  const oldest = cur.list.find((m) => !m.status);
+  if (!oldest) return;
+  setChannelMessages(id, { loading: true });
+  const { data, error } = await supabase
+    .from("fogon_messages")
+    .select("*, fogon_reactions(message_id,user_id,emoji)")
+    .eq("channel_id", id)
+    .lt("created_at", oldest.created_at)
+    .order("created_at", { ascending: false })
+    .limit(PAGE);
+  if (error) {
+    setChannelMessages(id, { loading: false });
+    return fail(error);
+  }
+  const older = ingest(data as Row[]).reverse();
+  setState((s) => {
+    const c = s.messages[id];
+    return { messages: { ...s.messages, [id]: { ...c, list: [...older, ...c.list], hasMore: older.length === PAGE, loading: false } } };
+  });
+}
+
+let readTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+export function markRead(id: string) {
+  if (state.unread[id]?.unread || state.unread[id]?.mentions) {
+    setState((s) => ({ unread: { ...s.unread, [id]: { unread: false, mentions: 0 } } }));
+  }
+  clearTimeout(readTimers[id]);
+  readTimers[id] = setTimeout(() => void supabase.rpc("fogon_mark_read", { p_channel: id }), 600);
+}
+
+/* ---------- enviar / editar / borrar ---------- */
+
+async function imageSize(file: File): Promise<{ width?: number; height?: number }> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const out = { width: bmp.width, height: bmp.height };
+    bmp.close();
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const pendingFiles: Record<string, File[]> = {};
+
+export async function sendMessage(channelId: string, content: string, files: File[], replyTo: string | null, retryId?: string) {
+  const id = retryId ?? crypto.randomUUID();
+  const me = meId();
+  if (!retryId) {
+    pendingFiles[id] = files;
+    const optimistic: Message = {
+      id,
+      channel_id: channelId,
+      author_id: me,
+      content,
+      attachments: [],
+      mentions: [],
+      reply_to_id: replyTo,
+      created_at: new Date().toISOString(),
+      edited_at: null,
+      status: "sending",
+      localFiles: files.map((f) => ({ url: URL.createObjectURL(f), name: f.name })),
+    };
+    setChannelMessages(channelId, { list: upsertMessage(state.messages[channelId]?.list ?? [], optimistic) });
+  } else {
+    patchMessage(channelId, id, { status: "sending" });
+  }
+  try {
+    const attachments: Attachment[] = [];
+    for (const [i, f] of (pendingFiles[id] ?? []).entries()) {
+      const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "png";
+      const path = `${channelId}/${me}/${id}-${i}.${ext}`;
+      const up = await supabase.storage.from(BUCKET).upload(path, f, { contentType: f.type, upsert: true });
+      if (up.error) throw up.error;
+      attachments.push({ path, name: f.name.slice(0, 120), size: f.size, type: f.type, ...(await imageSize(f)) });
+    }
+    const { data, error } = await supabase
+      .from("fogon_messages")
+      .insert({ id, channel_id: channelId, author_id: me, content, attachments, reply_to_id: replyTo })
+      .select("*")
+      .single();
+    if (error) throw error;
+    delete pendingFiles[id];
+    const list = upsertMessage(state.messages[channelId]?.list ?? [], { ...(data as Message), localFiles: undefined });
+    setChannelMessages(channelId, { list });
+    setState((s) => ({ reactions: { ...s.reactions, [id]: s.reactions[id] ?? [] } }));
+  } catch (e) {
+    // si ya se insertó (el eco llegó por Realtime), no es un fallo
+    if (/duplicate key/.test(String((e as { message?: string })?.message))) return patchMessage(channelId, id, { status: undefined });
+    patchMessage(channelId, id, { status: "failed" });
+    fail(e);
+  }
+}
+
+export function discardFailed(channelId: string, id: string) {
+  delete pendingFiles[id];
+  setChannelMessages(channelId, { list: (state.messages[channelId]?.list ?? []).filter((m) => m.id !== id) });
+}
+
+function patchMessage(channelId: string, id: string, patch: Partial<Message>) {
+  const list = state.messages[channelId]?.list ?? [];
+  setChannelMessages(channelId, { list: list.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+}
+
+export async function editMessage(m: Message, content: string) {
+  if (content === m.content) return;
+  const prev = m.content;
+  patchMessage(m.channel_id, m.id, { content, edited_at: new Date().toISOString() });
+  const { data, error } = await supabase.from("fogon_messages").update({ content }).eq("id", m.id).select("*").single();
+  if (error) {
+    patchMessage(m.channel_id, m.id, { content: prev, edited_at: m.edited_at });
+    return fail(error);
+  }
+  patchMessage(m.channel_id, m.id, data as Message);
+}
+
+export async function deleteMessage(m: Message) {
+  const list = state.messages[m.channel_id]?.list ?? [];
+  setChannelMessages(m.channel_id, { list: list.filter((x) => x.id !== m.id) });
+  const { error } = await supabase.from("fogon_messages").delete().eq("id", m.id);
+  if (error) {
+    setChannelMessages(m.channel_id, { list });
+    return fail(error);
+  }
+  if (m.attachments.length) void supabase.storage.from(BUCKET).remove(m.attachments.map((a) => a.path));
+}
+
+export async function toggleReaction(messageId: string, emoji: string) {
+  const me = meId();
+  const cur = state.reactions[messageId] ?? [];
+  const mine = cur.some((r) => r.user_id === me && r.emoji === emoji);
+  const next = mine ? cur.filter((r) => !(r.user_id === me && r.emoji === emoji)) : [...cur, { message_id: messageId, user_id: me, emoji }];
+  setState((s) => ({ reactions: { ...s.reactions, [messageId]: next } }));
+  const { error } = mine
+    ? await supabase.from("fogon_reactions").delete().match({ message_id: messageId, user_id: me, emoji })
+    : await supabase.from("fogon_reactions").insert({ message_id: messageId, user_id: me, emoji });
+  if (error && !/duplicate key/.test(error.message)) {
+    setState((s) => ({ reactions: { ...s.reactions, [messageId]: cur } }));
+    fail(error);
+  }
+}
+
+/* ---------- imágenes (URLs firmadas, con caché) ---------- */
+
+const urlCache = new Map<string, { url: string; exp: number }>();
+const urlWaiters = new Map<string, Promise<void>>();
+
+export function cachedUrl(path: string): string | null {
+  const c = urlCache.get(path);
+  return c && c.exp > Date.now() ? c.url : null;
+}
+
+let batch: string[] = [];
+let batchTimer: ReturnType<typeof setTimeout> | null = null;
+let batchPromise: Promise<void> | null = null;
+let batchResolve: (() => void) | null = null;
+
+/** Junta pedidos de varias imágenes en un solo llamado */
+export function signedUrl(path: string): Promise<void> {
+  if (cachedUrl(path)) return Promise.resolve();
+  const w = urlWaiters.get(path);
+  if (w) return w;
+  batch.push(path);
+  if (!batchPromise) batchPromise = new Promise<void>((r) => (batchResolve = r));
+  const p = batchPromise;
+  urlWaiters.set(path, p);
+  if (!batchTimer)
+    batchTimer = setTimeout(async () => {
+      const paths = batch;
+      const resolve = batchResolve!;
+      batch = [];
+      batchTimer = null;
+      batchPromise = null;
+      const { data } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600);
+      for (const d of data ?? []) if (d.signedUrl && d.path) urlCache.set(d.path, { url: d.signedUrl, exp: Date.now() + 55 * 60_000 });
+      paths.forEach((x) => urlWaiters.delete(x));
+      resolve();
+    }, 30);
+  return p;
+}
+
+/* ---------- servidores y canales ---------- */
+
+export async function createServer(name: string) {
+  const { data, error } = await supabase.rpc("fogon_create_server", { p_name: name });
+  if (error) throw error;
+  await loadAll();
+  go({ kind: "server", serverId: data as string, channelId: null });
+}
+
+export async function inviteInfo(code: string) {
+  const { data, error } = await supabase.rpc("fogon_invite_info", { p_code: code });
+  if (error) throw error;
+  return ((data ?? []) as { server_id: string; name: string; members: number; already_member: boolean }[])[0] ?? null;
+}
+
+export async function joinServer(code: string) {
+  const { data, error } = await supabase.rpc("fogon_join_server", { p_code: code });
+  if (error) throw error;
+  await loadAll();
+  go({ kind: "server", serverId: data as string, channelId: null });
+}
+
+export async function resetInvite(serverId: string) {
+  const { data, error } = await supabase.rpc("fogon_reset_invite", { p_server: serverId });
+  if (error) throw error;
+  setState((s) => ({ servers: { ...s.servers, [serverId]: { ...s.servers[serverId], invite_code: data as string } } }));
+}
+
+export async function renameServer(serverId: string, name: string) {
+  const { data, error } = await supabase.from("fogon_servers").update({ name: name.trim() }).eq("id", serverId).select("*").single();
+  if (error) throw error;
+  setState((s) => ({ servers: { ...s.servers, [serverId]: data as Server } }));
+}
+
+export async function deleteServer(serverId: string) {
+  const { error } = await supabase.from("fogon_servers").delete().eq("id", serverId);
+  if (error) throw error;
+  removeServerLocal(serverId);
+}
+
+export async function leaveServer(serverId: string) {
+  const { error } = await supabase.from("fogon_members").delete().match({ server_id: serverId, user_id: meId() });
+  if (error) throw error;
+  removeServerLocal(serverId);
+}
+
+function removeServerLocal(serverId: string) {
+  setState((s) => {
+    const servers = { ...s.servers };
+    delete servers[serverId];
+    const channels = Object.fromEntries(Object.entries(s.channels).filter(([, c]) => c.server_id !== serverId));
+    return { servers, channels };
+  });
+  if (state.place.kind === "server" && state.place.serverId === serverId) go({ kind: "dm", channelId: null });
+}
+
+export async function kickMember(serverId: string, userId: string) {
+  const { error } = await supabase.from("fogon_members").delete().match({ server_id: serverId, user_id: userId });
+  if (error) throw error;
+  setState((s) => ({ members: { ...s.members, [serverId]: (s.members[serverId] ?? []).filter((u) => u !== userId) } }));
+}
+
+export async function saveChannel(c: Partial<Channel> & { server_id: string; kind: "text" | "category" }) {
+  const fields = { name: c.name, topic: c.topic ?? "", parent_id: c.parent_id ?? null, position: c.position ?? 0 };
+  const q = c.id
+    ? supabase.from("fogon_channels").update(fields).eq("id", c.id)
+    : supabase.from("fogon_channels").insert({ ...fields, server_id: c.server_id, kind: c.kind });
+  const { data, error } = await q.select("*").single();
+  if (error) throw error;
+  setState((s) => ({ channels: { ...s.channels, [data.id]: data as Channel } }));
+  return data as Channel;
+}
+
+export async function deleteChannel(id: string) {
+  const ch = state.channels[id];
+  const { error } = await supabase.from("fogon_channels").delete().eq("id", id);
+  if (error) throw error;
+  setState((s) => {
+    const channels = { ...s.channels };
+    delete channels[id];
+    for (const c of Object.values(channels)) if (c.parent_id === id) channels[c.id] = { ...c, parent_id: null };
+    return { channels };
+  });
+  if (state.place.channelId === id && ch?.server_id) go({ kind: "server", serverId: ch.server_id, channelId: null });
+}
+
+export async function openDm(userId: string) {
+  const { data, error } = await supabase.rpc("fogon_open_dm", { p_other: userId });
+  if (error) throw error;
+  const id = data as string;
+  if (!state.channels[id]) await loadAll();
+  go({ kind: "dm", channelId: id });
+}
+
+export async function findUser(username: string): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from("fogon_profiles")
+    .select("id,username,display_name,color")
+    .eq("username", username.toLowerCase().replace(/^@/, ""))
+    .maybeSingle();
+  if (error) throw error;
+  if (data) setState((s) => ({ profiles: { ...s.profiles, [data.id]: data } }));
+  return data;
+}
+
+/* ---------- Realtime ---------- */
+
+let rt: RealtimeChannel | null = null;
+let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+const reloadSoon = () => {
+  if (reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => void loadAll(), 300);
+};
+
+function stopRealtime() {
+  if (rt) void supabase.removeChannel(rt);
+  rt = null;
+}
+
+function onMessageInsert(m: Message) {
+  m = { ...m, attachments: m.attachments ?? [], mentions: m.mentions ?? [] };
+  const me = meId();
+  const ch = state.channels[m.channel_id];
+  if (!ch) return reloadSoon(); // DM nuevo que me abrieron
+  setState((s) => ({ channels: { ...s.channels, [ch.id]: { ...ch, last_message_at: m.created_at } } }));
+  const cm = state.messages[m.channel_id];
+  if (cm) setChannelMessages(m.channel_id, { list: upsertMessage(cm.list, m) });
+  setState((s) => ({ reactions: { ...s.reactions, [m.id]: s.reactions[m.id] ?? [] } }));
+  void ensureProfiles([m.author_id]);
+  if (m.reply_to_id) void loadReplies([m]);
+  if (m.author_id === me) return;
+  const viewing = state.place.channelId === m.channel_id && document.visibilityState === "visible";
+  if (viewing) return markRead(m.channel_id);
+  const u = state.unread[m.channel_id] ?? { unread: false, mentions: 0 };
+  const pinged = m.mentions.includes(me) || ch.kind === "dm";
+  setState((s) => ({ unread: { ...s.unread, [m.channel_id]: { unread: true, mentions: u.mentions + (pinged ? 1 : 0) } } }));
+  if (pinged) notify(m);
+}
+
+function notify(m: Message) {
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible") return;
+    const who = state.profiles[m.author_id]?.display_name ?? "Alguien";
+    new Notification(who, { body: m.content.slice(0, 140) || "Mandó una imagen", tag: m.channel_id });
+  } catch {}
+}
+
+function startRealtime() {
+  stopRealtime();
+  rt = supabase
+    .channel("fogon-db")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "fogon_messages" }, (p) => onMessageInsert(p.new as Message))
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_messages" }, (p) => {
+      const m = p.new as Message;
+      const cm = state.messages[m.channel_id];
+      if (cm?.list.some((x) => x.id === m.id)) setChannelMessages(m.channel_id, { list: upsertMessage(cm.list, m) });
+      if (m.id in state.replyCache) setState((s) => ({ replyCache: { ...s.replyCache, [m.id]: m } }));
+    })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "fogon_messages" }, (p) => {
+      const id = (p.old as { id: string }).id;
+      setState((s) => {
+        const messages = { ...s.messages };
+        for (const [cid, c] of Object.entries(messages)) if (c.list.some((x) => x.id === id)) messages[cid] = { ...c, list: c.list.filter((x) => x.id !== id) };
+        return { messages, replyCache: id in s.replyCache ? { ...s.replyCache, [id]: null } : s.replyCache };
+      });
+    })
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "fogon_reactions" }, (p) => {
+      const r = p.new as Reaction;
+      if (!(r.message_id in state.reactions)) return;
+      const cur = state.reactions[r.message_id];
+      if (cur.some((x) => x.user_id === r.user_id && x.emoji === r.emoji)) return;
+      setState((s) => ({ reactions: { ...s.reactions, [r.message_id]: [...cur, r] } }));
+    })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "fogon_reactions" }, (p) => {
+      const r = p.old as Reaction;
+      if (!(r.message_id in state.reactions)) return;
+      setState((s) => ({
+        reactions: { ...s.reactions, [r.message_id]: s.reactions[r.message_id].filter((x) => !(x.user_id === r.user_id && x.emoji === r.emoji)) },
+      }));
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_channels" }, (p) => {
+      if (p.eventType === "DELETE") {
+        const id = (p.old as { id: string }).id;
+        if (!state.channels[id]) return;
+        const ch = state.channels[id];
+        setState((s) => {
+          const channels = { ...s.channels };
+          delete channels[id];
+          return { channels };
+        });
+        if (state.place.channelId === id && ch.server_id) go({ kind: "server", serverId: ch.server_id, channelId: null });
+        return;
+      }
+      const c = p.new as Channel;
+      if (c.kind === "dm" && !state.channels[c.id]) return reloadSoon();
+      setState((s) => ({ channels: { ...s.channels, [c.id]: c } }));
+    })
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "fogon_members" }, (p) => {
+      const r = p.new as { server_id: string; user_id: string };
+      if (r.user_id === meId() || !state.servers[r.server_id]) return reloadSoon();
+      if ((state.members[r.server_id] ?? []).includes(r.user_id)) return;
+      setState((s) => ({ members: { ...s.members, [r.server_id]: [...(s.members[r.server_id] ?? []), r.user_id] } }));
+      void ensureProfiles([r.user_id]);
+    })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_servers" }, (p) => {
+      const sv = p.new as Server;
+      if (state.servers[sv.id]) setState((s) => ({ servers: { ...s.servers, [sv.id]: sv } }));
+    })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "fogon_servers" }, (p) => {
+      const id = (p.old as { id: string }).id;
+      if (state.servers[id]) removeServerLocal(id);
+    })
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") setState({ online: true });
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setState({ online: false });
+    });
+}
+
+/* ---------- utilidades para la UI ---------- */
+
+export function channelLabel(c: Channel | undefined): string {
+  if (!c) return "";
+  if (c.kind === "dm") {
+    const peer = state.profiles[state.dmPeers[c.id]];
+    return peer ? peer.display_name : "Mensaje directo";
+  }
+  return c.name;
+}
+
+export function serverUnread(s: State, serverId: string): Unread {
+  let unread = false;
+  let mentions = 0;
+  for (const c of Object.values(s.channels)) {
+    if (c.server_id !== serverId || c.kind !== "text") continue;
+    const u = s.unread[c.id];
+    if (u?.unread) unread = true;
+    mentions += u?.mentions ?? 0;
+  }
+  return { unread, mentions };
+}
+
+export function dmUnread(s: State): number {
+  let n = 0;
+  for (const c of Object.values(s.channels)) if (c.kind === "dm") n += s.unread[c.id]?.mentions ?? 0;
+  return n;
+}

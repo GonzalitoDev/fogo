@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+  # La publishable key es pública por diseño (viaja al navegador); la seguridad está en RLS.
+  NEXT_PUBLIC_SUPABASE_URL = "https://xfwolaurpeofysnymqle.supabase.co"
+  NEXT_PUBLIC_SUPABASE_KEY = "sb_publishable_3VvBUD5Bdu3Uaq59fJ99MQ_XDCtujUU"
