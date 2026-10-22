@@ -26,6 +26,12 @@ export function AuthScreen() {
       } else {
         const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { emailRedirectTo: location.origin + location.pathname + location.search } });
         if (error) throw error;
+        // Supabase no avisa si el email ya existe: devuelve un usuario sin identidades
+        if (data.user && (data.user.identities?.length ?? 0) === 0) {
+          setMode("in");
+          setErr("Ya hay una cuenta con ese email. Entrá con tu contraseña.");
+          return;
+        }
         if (!data.session) setSent(true);
       }
     } catch (e) {
