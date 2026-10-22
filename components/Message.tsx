@@ -14,6 +14,7 @@ type Props = {
   me: string;
   canModerate: boolean;
   author?: Profile;
+  authorColor?: string;
   reactions: Reaction[];
   editing: boolean;
   onEdit: (on: boolean) => void;
@@ -164,7 +165,7 @@ function MessageView(p: Props) {
       <div style={{ minWidth: 0 }}>
         {p.head && (
           <div className="meta">
-            <button className="author" style={{ ["--c" as string]: p.author?.color ?? "var(--ink)" }} onClick={(e) => p.author && p.onAuthor(p.author, { x: e.clientX, y: e.clientY })}>
+            <button className="author" style={{ ["--c" as string]: p.authorColor ?? "var(--ink)" }} onClick={(e) => p.author && p.onAuthor(p.author, { x: e.clientX, y: e.clientY })}>
               {p.author?.display_name ?? "…"}
             </button>
             <time className="when" dateTime={m.created_at} title={new Date(m.created_at).toLocaleString("es-AR")}>

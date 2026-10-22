@@ -15,6 +15,7 @@ type Props = {
   channelId: string;
   placeholder: string;
   people: Profile[];
+  everyone?: boolean;
   channels: Channel[];
   replyTo: Message | null;
   replyAuthor?: Profile;
@@ -85,11 +86,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
     if (!trig || dismissed === trig.start) return null;
     if (trig.char === "@") {
       const list = filterProfiles(p.people, trig.query);
+      if (p.everyone && "everyone".startsWith(trig.query)) list.unshift({ id: "everyone", username: "everyone", display_name: "Todos los miembros", color: "#99a8a4" });
       return list.length ? { kind: "@" as const, list } : null;
     }
     const list = p.channels.filter((c) => c.name.includes(trig.query)).slice(0, 8);
     return list.length ? { kind: "#" as const, list } : null;
-  }, [trig?.char, trig?.query, trig?.start, dismissed, p.people, p.channels]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [trig?.char, trig?.query, trig?.start, dismissed, p.people, p.channels, p.everyone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const complete = (value: string) => {
     if (!trig) return;

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildRows, channelTree, dayLabel } from "@/lib/chat";
-import { loadOlder, openDm, fail, useStore } from "@/lib/store";
+import { can, fail, loadOlder, nameColor, openDm, useStore } from "@/lib/store";
 import type { Channel, Message as Msg, Profile } from "@/lib/types";
 import { Composer, type ComposerHandle } from "./Composer";
 import { Icon } from "./Icon";
@@ -27,7 +27,10 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
   const peer = peerId ? profiles[peerId] : undefined;
   const isDm = channel.kind === "dm";
   const title = isDm ? peer?.display_name ?? "Mensaje directo" : channel.name;
-  const canModerate = !!server && server.owner_id === me?.id;
+  const state = useStore((s) => s);
+  const canModerate = can(state, channel.server_id, "manage_messages");
+  const canEveryone = can(state, channel.server_id, "mention_everyone");
+  const colorFor = (uid: string) => nameColor(state, channel.server_id, uid);
 
   const people = useMemo(() => {
     const ids = isDm ? [peerId, me?.id] : members ?? [];
@@ -37,6 +40,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
 
   const mentionLabel = useCallback(
     (username: string) => {
+      if (username === "everyone") return { label: "everyone", me: !isDm };
       const p = people.find((x) => x.username === username) ?? Object.values(profiles).find((x) => x.username === username);
       return p ? { label: p.display_name, me: p.id === me?.id } : null;
     },
@@ -169,6 +173,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
                 me={me?.id ?? ""}
                 canModerate={canModerate}
                 author={profiles[r.msg.author_id]}
+                authorColor={colorFor(r.msg.author_id)}
                 reactions={reactions[r.msg.id] ?? EMPTY}
                 editing={editing === r.msg.id}
                 onEdit={(on) => setEditing(on ? r.msg.id : null)}
@@ -188,6 +193,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         channelId={channel.id}
         placeholder={isDm ? `Mensaje para @${peer?.username ?? "…"}` : `Mensaje en #${channel.name}`}
         people={people}
+        everyone={canEveryone && !isDm}
         channels={serverChannels}
         replyTo={replyTo}
         replyAuthor={replyTo ? profiles[replyTo.author_id] : undefined}

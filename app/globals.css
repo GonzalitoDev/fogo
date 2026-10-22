@@ -318,6 +318,11 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; }
 .home p { margin: 0; color: var(--ink-2); }
 
 .mobile-only { display: none; }
+.rot90 { transform: rotate(90deg); }
+.member-group { margin-top: 14px; }
+.member-group:first-of-type { margin-top: 0; }
+.role-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.role-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; background: var(--active); border-radius: 6px; padding: 2px 7px; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 

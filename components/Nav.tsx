@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { channelTree } from "@/lib/chat";
-import { dmUnread, go, serverUnread, signOut, useStore, type State } from "@/lib/store";
+import { can, dmUnread, go, serverUnread, signOut, useStore, type State } from "@/lib/store";
 import type { Channel, Server } from "@/lib/types";
 import { Ember, Icon } from "./Icon";
 import { Avatar, Menu, type MenuItem } from "./ui";
@@ -13,6 +13,7 @@ export type NavDialogs = {
   serverSettings: (s: Server) => void;
   channelEdit: (c: Partial<Channel> & { server_id: string; kind: "text" | "category" }) => void;
   confirmLeave: (s: Server) => void;
+  roles: (s: Server) => void;
   newDm: () => void;
   profile: () => void;
 };
@@ -117,7 +118,11 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
   const unread = useStore((s) => s.unread);
   const place = useStore((s) => s.place);
   const me = useStore((s) => s.me);
-  const owner = me?.id === server.owner_id;
+  const state = useStore((s) => s);
+  const isOwner = me?.id === server.owner_id;
+  const owner = can(state, server.id, "manage_channels");
+  const canRoles = can(state, server.id, "manage_roles");
+  const canServer = can(state, server.id, "manage_server");
   const tree = useMemo(() => channelTree(Object.values(channels), server.id), [channels, server.id]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -143,12 +148,11 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
       ? ([
           { label: "Crear canal", icon: <Icon name="hash" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "text", name: "", parent_id: tree.groups[0]?.cat.id ?? null }) },
           { label: "Crear categoría", icon: <Icon name="folder" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "category", name: "", position: tree.groups.length }) },
-          { label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) },
         ] as MenuItem[])
-      : ([
-          "sep",
-          { label: "Salir del servidor", icon: <Icon name="door" />, danger: true, onClick: () => dialogs.confirmLeave(server) },
-        ] as MenuItem[])),
+      : []),
+    ...(canRoles ? ([{ label: "Roles", icon: <Icon name="shield" />, onClick: () => dialogs.roles(server) }] as MenuItem[]) : []),
+    ...(canServer ? ([{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }] as MenuItem[]) : []),
+    ...(!isOwner ? (["sep", { label: "Salir del servidor", icon: <Icon name="door" />, danger: true, onClick: () => dialogs.confirmLeave(server) }] as MenuItem[]) : []),
   ];
 
   return (

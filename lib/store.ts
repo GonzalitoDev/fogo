@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
-import type { Attachment, Channel, Message, Place, Profile, Reaction, Server, Unread } from "./types";
+import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
 
@@ -18,6 +18,8 @@ export type State = {
   servers: Record<string, Server>;
   channels: Record<string, Channel>;
   members: Record<string, string[]>; // serverId -> userIds
+  roles: Record<string, Role>;
+  memberRoles: Record<string, Record<string, string[]>>; // serverId -> userId -> roleIds
   dmPeers: Record<string, string>; // channelId -> userId del otro
   profiles: Record<string, Profile>;
   messages: Record<string, ChannelMessages>;
@@ -37,6 +39,8 @@ const initial: State = {
   servers: {},
   channels: {},
   members: {},
+  roles: {},
+  memberRoles: {},
   dmPeers: {},
   profiles: {},
   messages: {},
@@ -184,14 +188,16 @@ type MemberRow = { server_id: string; user_id: string; profile: Profile | null }
 type DmRow = { channel_id: string; user_id: string; profile: Profile | null };
 
 export async function loadAll() {
-  const [servers, channels, members, dms, unread] = await Promise.all([
+  const [servers, channels, members, dms, unread, roles, memberRoles] = await Promise.all([
     supabase.from("fogon_servers").select("*"),
     supabase.from("fogon_channels").select("*"),
     supabase.from("fogon_members").select("server_id,user_id,profile:fogon_profiles(id,username,display_name,color)"),
     supabase.from("fogon_dm_participants").select("channel_id,user_id,profile:fogon_profiles(id,username,display_name,color)"),
     supabase.rpc("fogon_unread"),
+    supabase.from("fogon_roles").select("*"),
+    supabase.from("fogon_member_roles").select("server_id,user_id,role_id"),
   ]);
-  const err = servers.error || channels.error || members.error || dms.error || unread.error;
+  const err = servers.error || channels.error || members.error || dms.error || unread.error || roles.error || memberRoles.error;
   if (err) return fail(err);
   const profiles: Record<string, Profile> = { ...state.profiles };
   const mem: Record<string, string[]> = {};
@@ -213,7 +219,25 @@ export async function loadAll() {
     dmPeers: peers,
     profiles,
     unread: un,
+    ...rolesState(roles.data as Role[], memberRoles.data as MemberRoleRow[]),
   });
+}
+
+type MemberRoleRow = { server_id: string; user_id: string; role_id: string };
+
+function rolesState(roles: Role[], rows: MemberRoleRow[]) {
+  const mr: Record<string, Record<string, string[]>> = {};
+  for (const r of rows) ((mr[r.server_id] ??= {})[r.user_id] ??= []).push(r.role_id);
+  return { roles: Object.fromEntries(roles.map((r) => [r.id, r])), memberRoles: mr };
+}
+
+export async function loadRoles() {
+  const [roles, rows] = await Promise.all([
+    supabase.from("fogon_roles").select("*"),
+    supabase.from("fogon_member_roles").select("server_id,user_id,role_id"),
+  ]);
+  if (roles.error || rows.error) return fail(roles.error || rows.error);
+  setState(rolesState(roles.data as Role[], rows.data as MemberRoleRow[]));
 }
 
 async function ensureProfiles(ids: string[]) {
@@ -577,6 +601,73 @@ export async function findUser(username: string): Promise<Profile | null> {
   return data;
 }
 
+/* ---------- roles y permisos ---------- */
+
+export const ALL_PERMS: Perm[] = ["manage_server", "manage_channels", "manage_roles", "manage_messages", "kick_members", "mention_everyone"];
+
+export function serverRoles(s: State, serverId: string): Role[] {
+  return Object.values(s.roles)
+    .filter((r) => r.server_id === serverId)
+    .sort((a, b) => b.position - a.position || a.created_at.localeCompare(b.created_at));
+}
+
+export function rolesOf(s: State, serverId: string, userId: string): Role[] {
+  return (s.memberRoles[serverId]?.[userId] ?? [])
+    .map((id) => s.roles[id])
+    .filter((r): r is Role => !!r)
+    .sort((a, b) => b.position - a.position);
+}
+
+export function topPosition(s: State, serverId: string, userId: string): number {
+  if (s.servers[serverId]?.owner_id === userId) return 1000;
+  return rolesOf(s, serverId, userId)[0]?.position ?? 0;
+}
+
+export function myPerms(s: State, serverId: string): Set<Perm> {
+  const me = s.me?.id ?? "";
+  if (s.servers[serverId]?.owner_id === me) return new Set(ALL_PERMS);
+  return new Set(rolesOf(s, serverId, me).flatMap((r) => r.perms));
+}
+
+export function can(s: State, serverId: string | null | undefined, perm: Perm): boolean {
+  return !!serverId && myPerms(s, serverId).has(perm);
+}
+
+/** Color del nombre: el del rol más alto que tenga color distinto al gris por defecto */
+export function nameColor(s: State, serverId: string | null | undefined, userId: string): string | undefined {
+  if (!serverId) return undefined;
+  return rolesOf(s, serverId, userId).find((r) => r.color.toLowerCase() !== "#99a8a4")?.color;
+}
+
+export async function saveRole(r: Partial<Role> & { server_id: string }) {
+  const fields = { name: r.name?.trim(), color: r.color, position: r.position, hoist: r.hoist, perms: r.perms };
+  let id = r.id;
+  if (id) {
+    const { error } = await supabase.from("fogon_roles").update(fields).eq("id", id);
+    if (error) throw error;
+  } else {
+    id = crypto.randomUUID();
+    const { error } = await supabase.from("fogon_roles").insert({ ...fields, id, server_id: r.server_id });
+    if (error) throw error;
+  }
+  await loadRoles();
+  return id;
+}
+
+export async function deleteRole(id: string) {
+  const { error } = await supabase.from("fogon_roles").delete().eq("id", id);
+  if (error) throw error;
+  await loadRoles();
+}
+
+export async function setMemberRole(serverId: string, userId: string, roleId: string, on: boolean) {
+  const { error } = on
+    ? await supabase.from("fogon_member_roles").insert({ server_id: serverId, user_id: userId, role_id: roleId })
+    : await supabase.from("fogon_member_roles").delete().match({ user_id: userId, role_id: roleId });
+  if (error && !/duplicate key/.test(error.message)) throw error;
+  await loadRoles();
+}
+
 /* ---------- Realtime ---------- */
 
 let rt: RealtimeChannel | null = null;
@@ -584,6 +675,12 @@ let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 const reloadSoon = () => {
   if (reloadTimer) clearTimeout(reloadTimer);
   reloadTimer = setTimeout(() => void loadAll(), 300);
+};
+
+let rolesTimer: ReturnType<typeof setTimeout> | null = null;
+const rolesSoon = () => {
+  if (rolesTimer) clearTimeout(rolesTimer);
+  rolesTimer = setTimeout(() => void loadRoles(), 300);
 };
 
 function stopRealtime() {
@@ -676,6 +773,8 @@ function startRealtime() {
       setState((s) => ({ members: { ...s.members, [r.server_id]: [...(s.members[r.server_id] ?? []), r.user_id] } }));
       void ensureProfiles([r.user_id]);
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_roles" }, () => rolesSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_member_roles" }, () => rolesSoon())
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_servers" }, (p) => {
       const sv = p.new as Server;
       if (state.servers[sv.id]) setState((s) => ({ servers: { ...s.servers, [sv.id]: sv } }));

@@ -14,6 +14,7 @@ import {
   renameServer,
   resetInvite,
   saveChannel,
+  can,
   toast,
   updateProfile,
   useStore,
@@ -124,6 +125,7 @@ export function inviteLink(code: string) {
 export function InviteDialog({ server, onClose }: { server: Server; onClose: () => void }) {
   const me = useStore((s) => s.me);
   const live = useStore((s) => s.servers[server.id]) ?? server;
+  const canReset = useStore((s) => can(s, server.id, "manage_server"));
   const link = inviteLink(live.invite_code);
   const [copied, setCopied] = useState(false);
   return (
@@ -144,7 +146,7 @@ export function InviteDialog({ server, onClose }: { server: Server; onClose: () 
           {copied ? "Copiado" : "Copiar"}
         </button>
       </div>
-      {me?.id === live.owner_id && (
+      {canReset && (
         <p className="hint">
           ¿Se filtró el link?{" "}
           <button
@@ -226,6 +228,7 @@ export function InviteAcceptDialog({ code, onClose }: { code: string; onClose: (
 }
 
 export function ServerSettingsDialog({ server, onClose }: { server: Server; onClose: () => void }) {
+  const isOwner = useStore((s) => s.me?.id === server.owner_id);
   const [name, setName] = useState(server.name);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -254,9 +257,11 @@ export function ServerSettingsDialog({ server, onClose }: { server: Server; onCl
         </label>
         <Err text={err} />
         <div className="foot">
-          <button type="button" className="btn danger" style={{ marginRight: "auto" }} onClick={() => setConfirm(true)}>
-            Borrar servidor
-          </button>
+          {isOwner && (
+            <button type="button" className="btn danger" style={{ marginRight: "auto" }} onClick={() => setConfirm(true)}>
+              Borrar servidor
+            </button>
+          )}
           <button type="button" className="btn ghost" onClick={onClose}>
             Cancelar
           </button>

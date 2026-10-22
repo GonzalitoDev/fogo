@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { configured } from "@/lib/supabase";
-import { boot, setState, useStore } from "@/lib/store";
+import { boot, can, getState, setState, useStore } from "@/lib/store";
 import type { Channel, Server } from "@/lib/types";
 import { AuthScreen, ProfileSetup } from "@/components/Auth";
 import { ChatPane } from "@/components/Chat";
@@ -20,6 +20,7 @@ import { Ember, Icon } from "@/components/Icon";
 import { MemberList } from "@/components/Members";
 import { DmSidebar, Rail, ServerSidebar, type NavDialogs } from "@/components/Nav";
 import { QuickSwitcher } from "@/components/Switcher";
+import { RolesDialog } from "@/components/Roles";
 
 type Dialog =
   | { kind: "create" }
@@ -27,6 +28,7 @@ type Dialog =
   | { kind: "accept"; code: string }
   | { kind: "settings"; server: Server }
   | { kind: "leave"; server: Server }
+  | { kind: "roles"; server: Server }
   | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" } }
   | { kind: "dm" }
   | { kind: "profile" }
@@ -133,10 +135,12 @@ export default function Page() {
     serverSettings: (server) => setDialog({ kind: "settings", server }),
     channelEdit: (initial) => setDialog({ kind: "channel", initial }),
     confirmLeave: (server) => setDialog({ kind: "leave", server }),
+    roles: (server) => setDialog({ kind: "roles", server }),
     newDm: () => setDialog({ kind: "dm" }),
     profile: () => setDialog({ kind: "profile" }),
   };
   const server = place.kind === "server" ? servers[place.serverId] : undefined;
+  const canManageChannels = can(getState(), server?.id, "manage_channels");
   const showMembers = !!server && membersOpen && !!channel;
   const close = () => setDialog(null);
 
@@ -164,7 +168,7 @@ export default function Page() {
               {server ? (
                 <>
                   <h2>No hay canales para mostrar</h2>
-                  <p>{server.owner_id === me.id ? "Creá un canal desde el menú del servidor." : "El dueño todavía no creó canales."}</p>
+                  <p>{canManageChannels ? "Creá un canal desde el menú del servidor." : "Todavía nadie creó canales."}</p>
                 </>
               ) : Object.keys(servers).length ? (
                 <>
@@ -200,6 +204,7 @@ export default function Page() {
       {dialog?.kind === "accept" && <InviteAcceptDialog code={dialog.code} onClose={close} />}
       {dialog?.kind === "settings" && <ServerSettingsDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "leave" && <LeaveServerDialog server={dialog.server} onClose={close} />}
+      {dialog?.kind === "roles" && <RolesDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
       {dialog?.kind === "profile" && <ProfileDialog onClose={close} />}
