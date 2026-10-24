@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { channelAllows, go, setMicMuted, setSounds, setState, useStore, type State } from "@/lib/store";
 import type { Channel, Profile } from "@/lib/types";
-import { joinVoice, leaveVoice } from "@/lib/voice";
+import { joinVoice, leaveVoice, setNoiseMode } from "@/lib/voice";
 import { Icon } from "./Icon";
 import { Avatar } from "./ui";
 
@@ -90,6 +90,7 @@ export function VoiceConnected() {
   const ch = useStore((s) => (s.voice ? s.channels[s.voice.channelId] : undefined));
   const server = useStore((s) => (s.voice ? s.servers[s.voice.serverId] : undefined));
   const peers = useStore((s) => s.voicePeers);
+  const ping = useStore((s) => s.voicePing);
   if (!voice || !ch) return null;
   const vals = Object.values(peers);
   const bad = vals.includes("failed");
@@ -99,15 +100,38 @@ export function VoiceConnected() {
       <div className="vc-panel-info">
         <b className={bad ? "bad" : connecting ? "wait" : ""}>
           <Icon name="signal" /> {bad ? "Problemas de conexión" : connecting ? "Conectando…" : "Voz conectada"}
+          {!bad && !connecting && ping !== null && (
+            <span className={`vc-ping ${ping < 100 ? "good" : ping < 250 ? "mid" : "slow"}`} title="Latencia de ida y vuelta con los demás">
+              {ping} ms
+            </span>
+          )}
         </b>
         <button className="vc-where" onClick={() => go({ kind: "server", serverId: voice.serverId, channelId: voice.channelId })} title="Ir al canal">
           {ch.name} / {server?.name}
         </button>
       </div>
+      <NoiseButton className="icon-btn" />
       <button className="icon-btn vc-leave" onClick={() => void leaveVoice()} aria-label="Desconectarse" title="Desconectarse">
         <Icon name="hangup" />
       </button>
     </div>
+  );
+}
+
+/** Prende / apaga la supresión de ruido con IA (como el botón de Krisp en Discord). */
+export function NoiseButton({ className }: { className: string }) {
+  const mode = useStore((s) => s.noiseMode);
+  const on = mode === "ia";
+  return (
+    <button
+      className={`${className} noise-btn${on ? " on" : ""}`}
+      onClick={() => void setNoiseMode(on ? "navegador" : "ia")}
+      aria-pressed={on}
+      aria-label={on ? "Supresión de ruido con IA: activada" : "Supresión de ruido con IA: desactivada"}
+      title={on ? "Supresión de ruido con IA activada" : "Activar supresión de ruido con IA"}
+    >
+      <Icon name="noise" />
+    </button>
   );
 }
 
@@ -175,6 +199,7 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
             <button className={`vc-btn${off ? " off" : ""}`} onClick={() => setMicMuted(!off)} aria-pressed={off} aria-label={off ? "Activar micrófono" : "Silenciar micrófono"} title={off ? "Activar micrófono" : "Silenciar"}>
               <Icon name={off ? "micOff" : "mic"} />
             </button>
+            <NoiseButton className="vc-btn" />
             <button className={`vc-btn${!sounds ? " off" : ""}`} onClick={() => setSounds(!sounds)} aria-pressed={!sounds} aria-label={sounds ? "Ensordecer" : "Dejar de ensordecer"} title={sounds ? "Ensordecer" : "Dejar de ensordecer"}>
               <Icon name={sounds ? "headphones" : "headphonesOff"} />
             </button>

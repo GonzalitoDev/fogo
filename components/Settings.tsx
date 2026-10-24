@@ -10,6 +10,7 @@ import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
 import { RolesDialog } from "./Roles";
 import { BansDialog } from "./Moderation";
 import { Avatar, InlineModal, useEscape } from "./ui";
+import { setNoiseMode, startMicTest, type MicTest, type NoiseMode } from "@/lib/voice";
 
 type Section = { id: string; label: string; danger?: boolean } | { group: string };
 
@@ -67,6 +68,7 @@ function UserSettings({ section }: { section: string }) {
     { id: "privacy", label: "Privacidad y seguridad" },
     { group: "Ajustes de la aplicación" },
     { id: "appearance", label: "Apariencia" },
+    { id: "voice", label: "Voz" },
     { id: "notifications", label: "Notificaciones" },
     { id: "keys", label: "Atajos de teclado" },
   ];
@@ -94,6 +96,7 @@ function UserSettings({ section }: { section: string }) {
       )}
       {section === "privacy" && <Privacy />}
       {section === "appearance" && <Appearance />}
+      {section === "voice" && <VoiceSettings />}
       {section === "notifications" && <Notifications />}
       {section === "keys" && <Keys />}
     </SettingsShell>
@@ -297,6 +300,96 @@ function Notifications() {
           <span />
         </label>
       </div>
+    </>
+  );
+}
+
+const NOISE: { id: NoiseMode; label: string; help: string }[] = [
+  { id: "ia", label: "IA (RNNoise)", help: "Una red neuronal limpia tu voz en tiempo real: saca teclado, ventilador, perros, tránsito. Recomendado." },
+  { id: "navegador", label: "Estándar", help: "La supresión que trae el navegador. Más liviana, saca menos ruido." },
+  { id: "off", label: "Ninguna", help: "El micrófono tal cual. Para micrófonos de estudio o música." },
+];
+
+function VoiceSettings() {
+  const mode = useStore((s) => s.noiseMode);
+  const inCall = useStore((s) => !!s.voice);
+  const [hear, setHear] = useState(true);
+  const [test, setTest] = useState<MicTest | null>(null);
+  const [level, setLevel] = useState(0);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!test) return;
+    let raf = 0;
+    const tick = () => {
+      setLevel(test.level());
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      cancelAnimationFrame(raf);
+      test.stop();
+    };
+  }, [test]);
+  const restart = async (m: NoiseMode, h: boolean) => {
+    setTest(null);
+    setErr("");
+    try {
+      setTest(await startMicTest(m, h));
+    } catch (e) {
+      setErr((e as Error)?.name === "NotAllowedError" ? "Fogón no tiene permiso para usar tu micrófono." : "No pudimos abrir el micrófono.");
+    }
+  };
+  return (
+    <>
+      <h1>Voz</h1>
+      <h3 className="settings-sub">Supresión de ruido</h3>
+      <div className="noise-opts" role="radiogroup" aria-label="Supresión de ruido">
+        {NOISE.map((n) => (
+          <label key={n.id} className={`kind-opt${mode === n.id ? " on" : ""}`}>
+            <Icon name={n.id === "off" ? "mic" : "noise"} />
+            <span>
+              <b>
+                {n.label}
+                {n.id === "ia" && <em className="tag-new">IA</em>}
+              </b>
+              <small>{n.help}</small>
+            </span>
+            <input
+              type="radio"
+              name="noise"
+              value={n.id}
+              checked={mode === n.id}
+              onChange={() => {
+                void setNoiseMode(n.id);
+                if (test) void restart(n.id, hear);
+              }}
+            />
+          </label>
+        ))}
+      </div>
+      {inCall && <p className="hint">Estás en una llamada: el cambio se aplica al toque, sin cortar.</p>}
+      <h3 className="settings-sub">Prueba de micrófono</h3>
+      <p className="hint">Hablá y fijate cómo te escuchan los demás. Probá prender una canilla o teclear fuerte con y sin la IA.</p>
+      <div className="mic-test">
+        <button className={`btn ${test ? "" : "primary"}`} onClick={() => (test ? setTest(null) : void restart(mode, hear))}>
+          {test ? "Parar" : "Probemos"}
+        </button>
+        <div className="mic-meter" aria-hidden="true">
+          <span style={{ width: `${Math.round((test ? level : 0) * 100)}%` }} />
+        </div>
+      </div>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={hear}
+          onChange={(e) => {
+            setHear(e.target.checked);
+            if (test) void restart(mode, e.target.checked);
+          }}
+        />
+        Escucharme mientras pruebo (usá auriculares)
+      </label>
+      {err && <p className="add-bad">{err}</p>}
     </>
   );
 }

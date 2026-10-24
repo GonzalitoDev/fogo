@@ -48,6 +48,8 @@ export type State = {
   voiceIn: Record<string, VoiceState>; // userId -> canal de voz donde está (de la presencia)
   speaking: Record<string, true>;
   voicePeers: Record<string, "connecting" | "connected" | "failed">;
+  noiseMode: "ia" | "navegador" | "off"; // supresión de ruido del micrófono
+  voicePing: number | null; // ms de ida y vuelta promedio en la llamada
 };
 
 const initial: State = {
@@ -87,6 +89,8 @@ const initial: State = {
   voiceIn: {},
   speaking: {},
   voicePeers: {},
+  noiseMode: "ia",
+  voicePing: null,
 };
 
 let state: State = initial;
@@ -211,6 +215,8 @@ async function onSession(session: Session | null) {
   void loadFriends();
   try {
     setState({ sounds: localStorage.getItem("fogon:sounds") !== "0", micMuted: localStorage.getItem("fogon:mic") === "0" });
+    const nm = localStorage.getItem("fogon:noise");
+    if (nm === "ia" || nm === "navegador" || nm === "off") setState({ noiseMode: nm });
   } catch {}
   startRealtime();
   startPresence();

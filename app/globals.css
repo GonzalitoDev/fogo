@@ -1045,3 +1045,23 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
   .vc-grid.n1 { grid-template-columns: 1fr; }
   .vc-tile .avatar { width: 56px; height: 56px; font-size: 20px; }
 }
+
+/* supresión de ruido y latencia */
+.vc-ping { margin-left: 4px; font-size: 11px; font-weight: 600; padding: 0 5px; border-radius: 8px; background: rgba(0, 0, 0, 0.25); }
+.vc-ping.good { color: #23a55a; }
+.vc-ping.mid { color: #f0b232; }
+.vc-ping.slow { color: #f23f43; }
+.vc-panel .icon-btn { width: 32px; height: 32px; color: var(--ink-2); flex: none; }
+.vc-panel .icon-btn:hover { background: rgba(78, 80, 88, 0.6); color: var(--ink); }
+.noise-btn.on { color: #23a55a !important; }
+.vc-btn.noise-btn.on { background: #2b2d31; }
+.settings-sub { margin: 24px 0 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--ink-2); letter-spacing: 0.02em; }
+.noise-opts { display: grid; gap: 0; max-width: 560px; }
+.tag-new { font-style: normal; margin-left: 8px; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--accent); color: #fff; vertical-align: 2px; }
+.mic-test { display: flex; align-items: center; gap: 16px; margin: 12px 0; max-width: 560px; }
+.mic-meter { flex: 1; height: 10px; border-radius: 5px; background: #4e5058; overflow: hidden; }
+.mic-meter span { display: block; height: 100%; background: #23a55a; border-radius: 5px; transition: width 0.05s linear; }
+.check-row { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 14px; cursor: pointer; }
+.vc-panel-info b { white-space: nowrap; overflow: hidden; }
+.vc-ping { white-space: nowrap; flex: none; }
+.vc-panel { gap: 2px; }

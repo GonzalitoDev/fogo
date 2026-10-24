@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@sapphi-red/web-noise-suppressor": "^0.4.1",
     "@supabase/supabase-js": "^2.118.0",
     "next": "^15.5.28",
     "react": "^19.3.1",

@@ -170,3 +170,16 @@ describe("permisos por categoría", () => {
     setState(base);
   });
 });
+
+import { tuneOpus } from "./opus";
+
+describe("opus en tiempo real", () => {
+  const sdp = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 63\r\nc=IN IP4 0.0.0.0\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 minptime=20;useinbandfec=0\r\na=rtpmap:63 red/48000/2\r\n";
+  it("paquetes de 10 ms, FEC y sin DTX", () => {
+    const out = tuneOpus(sdp);
+    expect(out).toContain("a=fmtp:111 minptime=10;useinbandfec=1;usedtx=0;stereo=0;sprop-stereo=0;maxaveragebitrate=64000\r\na=ptime:10\r\n");
+    expect(out.indexOf("c=IN")).toBeLessThan(out.indexOf("a=ptime"));
+    expect(tuneOpus(out)).toBe(out);
+  });
+  it("sin opus no toca nada", () => expect(tuneOpus("v=0\r\n")).toBe("v=0\r\n"));
+});

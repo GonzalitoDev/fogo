@@ -1,6 +1,7 @@
 "use client";
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { tuneOpus } from "./opus";
 import { supabase } from "./supabase";
 import { getState, retrackPresence, setState, subscribe, toast } from "./store";
 
@@ -19,14 +20,143 @@ type Sig =
   | { from: string; to: string; type: "offer" | "answer"; sdp: string }
   | { from: string; to: string; type: "ice"; candidate: RTCIceCandidateInit };
 
-type Peer = { pc: RTCPeerConnection; audio: HTMLAudioElement; pending: RTCIceCandidateInit[]; stopMeter?: () => void };
+type Peer = { pc: RTCPeerConnection; audio: HTMLAudioElement; pending: RTCIceCandidateInit[]; stopMeter?: () => void; sender?: RTCRtpSender };
+export type NoiseMode = "ia" | "navegador" | "off";
 
 let chan: RealtimeChannel | null = null;
-let local: MediaStream | null = null;
+let raw: MediaStream | null = null; // micrófono tal cual
+let local: MediaStream | null = null; // lo que se manda (ya sin ruido)
+let chainOff: (() => void) | undefined;
 let stopLocalMeter: (() => void) | undefined;
+let pingTimer: ReturnType<typeof setInterval> | undefined;
 const peers = new Map<string, Peer>();
 let actx: AudioContext | null = null;
 let joinSeq = 0;
+
+/* ---------- audio: contexto, supresión de ruido (RNNoise) ---------- */
+
+/** Un solo AudioContext a 48 kHz y en modo "interactivo" (el de menor latencia). */
+function audioCtx(): AudioContext {
+  if (!actx || actx.state === "closed") {
+    try {
+      actx = new AudioContext({ sampleRate: 48000, latencyHint: "interactive" });
+    } catch {
+      actx = new AudioContext({ latencyHint: "interactive" });
+    }
+  }
+  if (actx.state === "suspended") void actx.resume();
+  return actx;
+}
+
+let rnnoiseReady: Promise<ArrayBuffer> | null = null;
+let workletCtx: AudioContext | null = null;
+// se carga recién cuando hace falta (y nunca en el servidor: extiende AudioWorkletNode)
+const suppressor = () => import("@sapphi-red/web-noise-suppressor");
+async function rnnoiseFor(ctx: AudioContext): Promise<ArrayBuffer> {
+  const { loadRnnoise } = await suppressor();
+  rnnoiseReady ??= loadRnnoise({ url: "/voz/rnnoise.wasm", simdUrl: "/voz/rnnoise_simd.wasm" });
+  const bin = await rnnoiseReady.catch((e) => {
+    rnnoiseReady = null;
+    throw e;
+  });
+  if (workletCtx !== ctx) {
+    await ctx.audioWorklet.addModule("/voz/rnnoise-worklet.js");
+    workletCtx = ctx;
+  }
+  return bin;
+}
+
+function micConstraints(mode: NoiseMode): MediaTrackConstraints {
+  return {
+    echoCancellation: true,
+    // con la IA prendida apago la del navegador: si no, se pisan y la voz queda robótica
+    noiseSuppression: mode === "navegador",
+    autoGainControl: true,
+    channelCount: 1,
+    sampleRate: 48000,
+    ...({ latency: 0 } as object),
+  };
+}
+
+/**
+ * Arma lo que se manda a la llamada a partir del micrófono:
+ *  ia        -> RNNoise (red neuronal, corre en un AudioWorklet en tiempo real, ~10 ms de bloque)
+ *  navegador -> la supresión que trae Chrome/Firefox
+ *  off       -> el micrófono pelado
+ */
+export async function processMic(src: MediaStream, mode: NoiseMode): Promise<{ stream: MediaStream; off: () => void; mode: NoiseMode }> {
+  if (mode !== "ia") return { stream: new MediaStream(src.getAudioTracks()), off: () => {}, mode };
+  try {
+    if (typeof AudioWorkletNode === "undefined") throw new Error("sin AudioWorklet");
+    const ctx = audioCtx();
+    const wasmBinary = await rnnoiseFor(ctx);
+    const { RnnoiseWorkletNode } = await suppressor();
+    const input = ctx.createMediaStreamSource(src);
+    const rn = new RnnoiseWorkletNode(ctx, { wasmBinary, maxChannels: 1 });
+    const dest = ctx.createMediaStreamDestination();
+    dest.channelCount = 1;
+    input.connect(rn).connect(dest);
+    return {
+      stream: dest.stream,
+      mode,
+      off: () => {
+        try {
+          input.disconnect();
+          rn.disconnect();
+          rn.destroy();
+        } catch {}
+        dest.stream.getTracks().forEach((t) => t.stop());
+      },
+    };
+  } catch (e) {
+    console.warn("[fogon voz] RNNoise no disponible, uso la del navegador", e);
+    src.getAudioTracks().forEach((t) => void t.applyConstraints({ ...t.getConstraints(), noiseSuppression: true }).catch(() => {}));
+    return { stream: new MediaStream(src.getAudioTracks()), off: () => {}, mode: "navegador" };
+  }
+}
+
+/** Cambia la supresión de ruido; si estás en una llamada, el cambio es al toque (sin cortar). */
+export async function setNoiseMode(mode: NoiseMode) {
+  setState({ noiseMode: mode });
+  try {
+    localStorage.setItem("fogon:noise", mode);
+  } catch {}
+  if (!raw) return;
+  const seq = joinSeq;
+  raw.getAudioTracks().forEach((t) => void t.applyConstraints(micConstraints(mode)).catch(() => {}));
+  const next = await processMic(raw, mode);
+  if (seq !== joinSeq || !raw) return next.off();
+  const track = next.stream.getAudioTracks()[0];
+  await Promise.all([...peers.values()].map((p) => p.sender?.replaceTrack(track).catch(() => {})));
+  const prevOff = chainOff;
+  chainOff = next.off;
+  local = next.stream;
+  prevOff?.();
+  applyLocalMute();
+  stopLocalMeter?.();
+  stopLocalMeter = meter(local, meId());
+  if (next.mode !== mode) {
+    setState({ noiseMode: next.mode });
+    toast("Tu navegador no soporta la supresión con IA; quedó la del navegador.", "error");
+  }
+}
+
+/* ---------- latencia ---------- */
+
+async function measurePing() {
+  const rtts: number[] = [];
+  await Promise.all(
+    [...peers.values()].map(async (p) => {
+      try {
+        const stats = await p.pc.getStats();
+        stats.forEach((r) => {
+          if (r.type === "candidate-pair" && r.state === "succeeded" && (r.nominated || r.selected) && typeof r.currentRoundTripTime === "number") rtts.push(r.currentRoundTripTime * 1000);
+        });
+      } catch {}
+    }),
+  );
+  setState({ voicePing: rtts.length ? Math.round(rtts.reduce((a, b) => a + b, 0) / rtts.length) : null });
+}
 
 const meId = () => getState().session?.user.id ?? "";
 
@@ -55,10 +185,9 @@ function setSpeaking(uid: string, on: boolean) {
 /** Mide el volumen de un stream y marca "hablando" (borde verde). */
 function meter(stream: MediaStream, uid: string): () => void {
   try {
-    actx ??= new AudioContext();
-    if (actx.state === "suspended") void actx.resume();
-    const src = actx.createMediaStreamSource(stream);
-    const an = actx.createAnalyser();
+    const ctx = audioCtx();
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser();
     an.fftSize = 512;
     src.connect(an);
     const buf = new Uint8Array(an.fftSize);
@@ -98,6 +227,7 @@ function applyLocalMute() {
   const s = getState();
   const off = s.micMuted || !s.sounds;
   local?.getAudioTracks().forEach((t) => (t.enabled = !off));
+  raw?.getAudioTracks().forEach((t) => (t.enabled = !off));
   for (const p of peers.values()) p.audio.muted = !s.sounds;
 }
 
@@ -113,11 +243,24 @@ function peerFor(uid: string): Peer {
   p = { pc, audio, pending: [] };
   peers.set(uid, p);
   setPeerState(uid, "connecting");
-  local?.getTracks().forEach((t) => pc.addTrack(t, local!));
+  const track = local?.getAudioTracks()[0];
+  if (track) {
+    p.sender = pc.addTrack(track, local!);
+    // la voz primero: prioridad alta en la red
+    const params = p.sender.getParameters();
+    if (params.encodings?.length) {
+      params.encodings.forEach((e) => Object.assign(e, { priority: "high", networkPriority: "high", maxBitrate: 64000 }));
+      void p.sender.setParameters(params).catch(() => {});
+    }
+  }
   pc.onicecandidate = (e) => {
     if (e.candidate) send({ from: meId(), to: uid, type: "ice", candidate: e.candidate.toJSON() });
   };
   pc.ontrack = (e) => {
+    // sin colchón extra: reproducir apenas llega (tiempo real)
+    try {
+      Object.assign(e.receiver, { jitterBufferTarget: 0, playoutDelayHint: 0 });
+    } catch {}
     const stream = e.streams[0] ?? new MediaStream([e.track]);
     audio.srcObject = stream;
     void audio.play().catch(() => {});
@@ -152,8 +295,9 @@ function dropPeer(uid: string) {
 async function call(uid: string, restart = false) {
   const p = peerFor(uid);
   const offer = await p.pc.createOffer(restart ? { iceRestart: true } : undefined);
-  await p.pc.setLocalDescription(offer);
-  send({ from: meId(), to: uid, type: "offer", sdp: offer.sdp ?? "" });
+  const sdp = tuneOpus(offer.sdp ?? "");
+  await p.pc.setLocalDescription({ type: "offer", sdp });
+  send({ from: meId(), to: uid, type: "offer", sdp });
 }
 
 async function onSignal(m: Sig) {
@@ -161,15 +305,16 @@ async function onSignal(m: Sig) {
   try {
     if (m.type === "offer") {
       const p = peerFor(m.from);
-      await p.pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
+      await p.pc.setRemoteDescription({ type: "offer", sdp: tuneOpus(m.sdp) });
       for (const c of p.pending.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
       const answer = await p.pc.createAnswer();
-      await p.pc.setLocalDescription(answer);
-      send({ from: meId(), to: m.from, type: "answer", sdp: answer.sdp ?? "" });
+      const sdp = tuneOpus(answer.sdp ?? "");
+      await p.pc.setLocalDescription({ type: "answer", sdp });
+      send({ from: meId(), to: m.from, type: "answer", sdp });
     } else if (m.type === "answer") {
       const p = peers.get(m.from);
       if (!p || p.pc.signalingState !== "have-local-offer") return;
-      await p.pc.setRemoteDescription({ type: "answer", sdp: m.sdp });
+      await p.pc.setRemoteDescription({ type: "answer", sdp: tuneOpus(m.sdp) });
       for (const c of p.pending.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
     } else if (m.type === "ice") {
       const p = peerFor(m.from);
@@ -208,7 +353,7 @@ export async function joinVoice(channelId: string) {
   const seq = ++joinSeq;
   setState({ voice: { channelId, serverId: ch.server_id, status: "connecting" } });
   try {
-    local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+    raw = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(getState().noiseMode), video: false });
   } catch (e) {
     if (seq !== joinSeq) return;
     setState({ voice: null });
@@ -217,10 +362,18 @@ export async function joinVoice(channelId: string) {
     return;
   }
   if (seq !== joinSeq) {
-    local.getTracks().forEach((t) => t.stop());
+    raw.getTracks().forEach((t) => t.stop());
+    raw = null;
     return;
   }
+  const proc = await processMic(raw, getState().noiseMode);
+  if (seq !== joinSeq) return proc.off();
+  local = proc.stream;
+  chainOff = proc.off;
+  if (proc.mode !== getState().noiseMode) setState({ noiseMode: proc.mode });
   applyLocalMute();
+  clearInterval(pingTimer);
+  pingTimer = setInterval(() => void measurePing(), 2000);
   stopLocalMeter = meter(local, meId());
   chan = supabase.channel(`fogon-voice:${channelId}`, { config: { private: true, broadcast: { self: false }, presence: { key: meId() } } });
   chan
@@ -246,7 +399,11 @@ export async function leaveVoice(silent = false) {
   for (const uid of [...peers.keys()]) dropPeer(uid);
   stopLocalMeter?.();
   stopLocalMeter = undefined;
-  local?.getTracks().forEach((t) => t.stop());
+  clearInterval(pingTimer);
+  chainOff?.();
+  chainOff = undefined;
+  raw?.getTracks().forEach((t) => t.stop());
+  raw = null;
   local = null;
   if (chan) {
     const c = chan;
@@ -255,7 +412,7 @@ export async function leaveVoice(silent = false) {
     void supabase.removeChannel(c);
   }
   if (was) {
-    setState({ voice: null, speaking: {}, voicePeers: {} });
+    setState({ voice: null, speaking: {}, voicePeers: {}, voicePing: null });
     retrackPresence();
     if (!silent) ping(false);
   }
@@ -265,8 +422,8 @@ export async function leaveVoice(silent = false) {
 function ping(join: boolean) {
   if (!getState().sounds) return;
   try {
-    actx ??= new AudioContext();
-    const t = actx.currentTime;
+    audioCtx();
+    const t = actx!.currentTime;
     (join ? [520, 780] : [620, 410]).forEach((f, i) => {
       const o = actx!.createOscillator();
       const g = actx!.createGain();
@@ -296,4 +453,38 @@ if (typeof window !== "undefined") {
     if (!s.session && s.voice) void leaveVoice(true);
   });
   window.addEventListener("pagehide", () => void leaveVoice(true));
+}
+
+/* ---------- prueba de micrófono (ajustes) ---------- */
+
+export type MicTest = { level: () => number; stop: () => void; mode: NoiseMode };
+
+/** Abre el micrófono con la supresión elegida y te deja escucharte (como "Probemos" de Discord). */
+export async function startMicTest(mode: NoiseMode, hear: boolean): Promise<MicTest> {
+  const src = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(mode), video: false });
+  const proc = await processMic(src, mode);
+  const ctx = audioCtx();
+  const node = ctx.createMediaStreamSource(proc.stream);
+  const an = ctx.createAnalyser();
+  an.fftSize = 512;
+  node.connect(an);
+  if (hear) an.connect(ctx.destination);
+  const buf = new Uint8Array(an.fftSize);
+  return {
+    mode: proc.mode,
+    level: () => {
+      an.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) sum += (v - 128) * (v - 128);
+      return Math.min(1, Math.sqrt(sum / buf.length) / 25);
+    },
+    stop: () => {
+      try {
+        node.disconnect();
+        an.disconnect();
+      } catch {}
+      proc.off();
+      src.getTracks().forEach((t) => t.stop());
+    },
+  };
 }
