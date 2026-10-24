@@ -420,6 +420,49 @@ export async function leaveVoice(silent = false) {
   }
 }
 
+/** Mover a alguien (o a un bot) a otro canal de voz. Necesita administrar canales. */
+export async function moveMember(userId: string, channelId: string) {
+  const s = getState();
+  const name = s.profiles[userId]?.display_name ?? "la persona";
+  const dest = s.channels[channelId]?.name;
+  const { error } = await supabase.rpc("fogon_voice_move", { p_user: userId, p_channel: channelId });
+  if (error) return toast(error.message, "error");
+  toast(dest ? `Movimos a ${name} a «${dest}»` : `Movimos a ${name}`);
+}
+
+/* ---------- me mueven a otro canal de voz ---------- */
+
+let movesChan: RealtimeChannel | null = null;
+let movesFor = "";
+
+function watchMoves() {
+  const id = meId();
+  if (!id) {
+    if (movesChan) {
+      const old = movesChan;
+      movesChan = null;
+      movesFor = "";
+      void supabase.removeChannel(old);
+    }
+    return;
+  }
+  if (id === movesFor) return;
+  movesFor = id;
+  if (movesChan) void supabase.removeChannel(movesChan);
+  movesChan = supabase
+    .channel(`fogon-moves:${id}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_voice_moves" }, (p) => {
+      const row = p.new as { user_id?: string; channel_id?: string | null };
+      if (!row?.user_id || row.user_id !== meId() || !row.channel_id) return;
+      void supabase.from("fogon_voice_moves").delete().eq("user_id", row.user_id);
+      const s = getState();
+      if (!s.voice || s.voice.channelId === row.channel_id) return;
+      const name = s.channels[row.channel_id]?.name;
+      void joinVoice(row.channel_id).then(() => toast(name ? `Te movieron a «${name}»` : "Te movieron de canal"));
+    })
+    .subscribe();
+}
+
 /** Sonidito de entrar / salir de la llamada. */
 function ping(join: boolean) {
   if (!getState().sounds) return;
@@ -453,7 +496,9 @@ if (typeof window !== "undefined") {
     // me sacaron del servidor o borraron el canal: corto
     if (s.voice && !s.channels[s.voice.channelId]) void leaveVoice();
     if (!s.session && s.voice) void leaveVoice(true);
+    watchMoves();
   });
+  watchMoves();
   window.addEventListener("pagehide", () => void leaveVoice(true));
 }
 

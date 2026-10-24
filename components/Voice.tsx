@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { channelAllows, go, setBotsListen, setMicMuted, toast, setSounds, setState, useStore, type State } from "@/lib/store";
 import type { Channel, Profile } from "@/lib/types";
-import { joinVoice, leaveVoice, setNoiseMode } from "@/lib/voice";
+import { joinVoice, leaveVoice, moveMember, setNoiseMode } from "@/lib/voice";
 import { listenSupported } from "@/lib/botListen";
 import { addTrack, pause, searchMusic, setMusicVolume, skip, stopMusic } from "@/lib/music";
 import type { MusicTrack } from "@/lib/store";
 import { Icon } from "./Icon";
-import { Avatar } from "./ui";
+import { Avatar, Menu } from "./ui";
 import { BotTag } from "./Permissions";
 
 export type VoiceMember = { p: Profile; muted: boolean; deafened: boolean };
@@ -56,9 +56,44 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
   const speaking = useStore((s) => s.speaking);
   const inHere = useStore((s) => s.voice?.channelId === c.id);
   const priv = useStore((s) => [c.parent_id, c.id].some((id) => id && (s.overrides[id] ?? []).some((o) => !o.role_id && o.deny.includes("view_channel"))));
+  const channels = useStore((s) => s.channels);
+  const targets = useMemo(
+    () =>
+      Object.values(channels)
+        .filter((x) => x.kind === "voice" && x.server_id === c.server_id && x.id !== c.id)
+        .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)),
+    [channels, c.server_id, c.id],
+  );
+  const canMove = owner && targets.length > 0;
+  const [drag, setDrag] = useState<string | null>(null);
+  const [over, setOver] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; uid: string } | null>(null);
   return (
     <>
-      <div className={`chan vc-chan${active ? " active" : ""}${inHere ? " joined" : ""}`}>
+      <div
+        className={`chan vc-chan${active ? " active" : ""}${inHere ? " joined" : ""}${over ? " drop" : ""}`}
+        onDragOver={
+          canMove
+            ? (e) => {
+                if (!e.dataTransfer.types.includes("text/plain")) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setOver(true);
+              }
+            : undefined
+        }
+        onDragLeave={canMove ? (e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOver(false) : undefined}
+        onDrop={
+          canMove
+            ? (e) => {
+                e.preventDefault();
+                setOver(false);
+                const uid = e.dataTransfer.getData("text/plain");
+                if (uid && !members.some((m) => m.p.id === uid)) void moveMember(uid, c.id);
+              }
+            : undefined
+        }
+      >
         <span className="hash-wrap">
           <Icon name="speaker" className="hash" />
           {priv && <Icon name="lock" className="hash-lock" />}
@@ -75,16 +110,59 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
       {members.length > 0 && (
         <ul className="vc-roster" aria-label={`Conectados a ${c.name}`}>
           {members.map((m) => (
-            <li key={m.p.id} className={speaking[m.p.id] ? "speaking" : ""}>
-              <button onClick={() => setState({ fullProfile: m.p.id })}>
+            <li
+              key={m.p.id}
+              className={`${speaking[m.p.id] ? "speaking" : ""}${drag === m.p.id ? " dragging" : ""}`.trim() || undefined}
+              draggable={canMove}
+              onDragStart={
+                canMove
+                  ? (e) => {
+                      e.dataTransfer.setData("text/plain", m.p.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDrag(m.p.id);
+                    }
+                  : undefined
+              }
+              onDragEnd={canMove ? () => setDrag(null) : undefined}
+              onContextMenu={
+                canMove
+                  ? (e) => {
+                      e.preventDefault();
+                      setMenu({ x: e.clientX, y: e.clientY, uid: m.p.id });
+                    }
+                  : undefined
+              }
+            >
+              <button className="vc-person" onClick={() => setState({ fullProfile: m.p.id })} title={canMove ? `Arrastrá a ${m.p.display_name} a otro canal de voz` : undefined}>
                 <Avatar p={m.p} size="xs" />
                 <span className="vc-name">{m.p.display_name}</span>
                 {m.p.is_bot && <BotTag />}
                 <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
               </button>
+              {canMove && (
+                <button
+                  className="icon-btn vc-more"
+                  title="Mover a otro canal"
+                  aria-label={`Mover a ${m.p.display_name} a otro canal de voz`}
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setMenu({ x: r.left, y: r.bottom + 6, uid: m.p.id });
+                  }}
+                >
+                  <Icon name="dots" />
+                </button>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {menu && (
+        <Menu
+          label="Mover a otro canal de voz"
+          at={menu}
+          onClose={() => setMenu(null)}
+          items={targets.map((t) => ({ label: t.name, icon: <Icon name="speaker" />, onClick: () => void moveMember(menu.uid, t.id) }))}
+        />
       )}
     </>
   );
