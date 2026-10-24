@@ -22,6 +22,8 @@ import { DmSidebar, Rail, ServerSidebar, type NavDialogs } from "@/components/Na
 import { QuickSwitcher } from "@/components/Switcher";
 import { RolesDialog } from "@/components/Roles";
 import { FullProfile } from "@/components/Profile";
+import { FriendsPage } from "@/components/Friends";
+import { loadFont, SettingsScreen } from "@/components/Settings";
 import { BansDialog } from "@/components/Moderation";
 
 type Dialog =
@@ -46,13 +48,13 @@ export default function Page() {
   const servers = useStore((s) => s.servers);
   const channel = useStore((s) => (s.place.channelId ? s.channels[s.place.channelId] : undefined));
   const toast = useStore((s) => s.toast);
-  const editingProfile = useStore((s) => s.editingProfile);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [membersOpen, setMembersOpen] = useState(true);
 
   useEffect(() => {
     if (configured) void boot();
+    loadFont();
     try {
       setMembersOpen(localStorage.getItem("fogon:members") !== "0" && window.innerWidth > 1100);
     } catch {}
@@ -136,13 +138,14 @@ export default function Page() {
   const dialogs: NavDialogs = {
     createServer: () => setDialog({ kind: "create" }),
     invite: (server) => setDialog({ kind: "invite", server }),
-    serverSettings: (server) => setDialog({ kind: "settings", server }),
+    serverSettings: (server) => setState({ settings: { kind: "server", serverId: server.id, section: "overview" } }),
     channelEdit: (initial) => setDialog({ kind: "channel", initial }),
     confirmLeave: (server) => setDialog({ kind: "leave", server }),
     roles: (server) => setDialog({ kind: "roles", server }),
     bans: (server) => setDialog({ kind: "bans", server }),
     newDm: () => setDialog({ kind: "dm" }),
-    profile: () => setDialog({ kind: "profile" }),
+    profile: () => setState({ settings: { kind: "user", section: "account" } }),
+    switcher: () => setDialog({ kind: "switcher" }),
   };
   const server = place.kind === "server" ? servers[place.serverId] : undefined;
   const canManageChannels = can(getState(), server?.id, "manage_channels");
@@ -159,6 +162,8 @@ export default function Page() {
 
       {channel && channel.kind !== "category" ? (
         <ChatPane key={channel.id} channel={channel} onMenu={() => setDrawer(true)} membersOpen={showMembers} onToggleMembers={toggleMembers} />
+      ) : !server ? (
+        <FriendsPage onMenu={() => setDrawer(true)} />
       ) : (
         <section className="chat">
           <header className="chat-head">
@@ -213,15 +218,8 @@ export default function Page() {
       {dialog?.kind === "bans" && <BansDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
-      {(dialog?.kind === "profile" || editingProfile) && (
-        <ProfileDialog
-          onClose={() => {
-            close();
-            setState({ editingProfile: false });
-          }}
-        />
-      )}
       <FullProfile />
+      <SettingsScreen />
       {dialog?.kind === "switcher" && <QuickSwitcher onClose={close} />}
 
       {toast && (

@@ -263,7 +263,7 @@ export function ProfilePopout({ p, at, serverId, actions = [], onClose }: { p: P
                 className="btn primary"
                 onClick={() => {
                   onClose();
-                  setState({ editingProfile: true });
+                  setState({ settings: { kind: "user", section: "profiles" } });
                 }}
               >
                 <Icon name="edit" /> Editar perfil
@@ -331,7 +331,7 @@ export function FullProfile() {
                     className="btn primary"
                     onClick={() => {
                       close();
-                      setState({ editingProfile: true });
+                      setState({ settings: { kind: "user", section: "profiles" } });
                     }}
                   >
                     <Icon name="edit" /> Editar perfil

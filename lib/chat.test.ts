@@ -113,3 +113,23 @@ describe("canales", () => {
     expect(t.flat.map((c) => c.id)).toEqual(["suelto", "a", "b", "c"]);
   });
 });
+
+import { firstUnreadId } from "./chat";
+import { typingText } from "./typing";
+
+describe("línea de NUEVOS y escribiendo", () => {
+  const mk = (id: string, author: string, min: number) => ({ id, channel_id: "c", author_id: author, content: "x", attachments: [], mentions: [], reply_to_id: null, created_at: new Date(Date.UTC(2026, 0, 1, 10, min)).toISOString(), edited_at: null });
+  const list = [mk("a", "yo", 0), mk("b", "otro", 5), mk("c", "yo", 10), mk("d", "otro", 15)];
+  it("marca el primer mensaje ajeno después de lo leído", () => {
+    expect(firstUnreadId(list, new Date(Date.UTC(2026, 0, 1, 10, 7)).toISOString(), "yo")).toBe("d");
+    expect(firstUnreadId(list, new Date(Date.UTC(2026, 0, 1, 10, 1)).toISOString(), "yo")).toBe("b");
+    expect(firstUnreadId(list, null, "yo")).toBe(null);
+    expect(firstUnreadId(list, new Date(Date.UTC(2026, 0, 1, 11)).toISOString(), "yo")).toBe(null);
+  });
+  it("arma la frase de quién escribe", () => {
+    expect(typingText([])).toBe("");
+    expect(typingText(["Beto"])).toBe("Beto está escribiendo…");
+    expect(typingText(["Beto", "Ana"])).toBe("Beto y Ana están escribiendo…");
+    expect(typingText(["A", "B", "C", "D"])).toBe("Varias personas están escribiendo…");
+  });
+});

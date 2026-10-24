@@ -5,7 +5,10 @@ import { activeTrigger, filterProfiles, IMAGE_TYPES, MAX_FILE, MAX_LEN } from "@
 import { sendMessage, toast } from "@/lib/store";
 import type { Channel, Message, Profile } from "@/lib/types";
 import { Icon } from "./Icon";
-import { Avatar } from "./ui";
+import { Avatar, EmojiPicker } from "./ui";
+
+// la carita del botón cambia cada vez que pasás el mouse, como en Discord
+const EMOJI_FACES = ["😀", "😄", "😎", "🤩", "😂", "🥳", "😺", "🤔"];
 
 export type ComposerHandle = { addFiles: (f: File[]) => void; focus: () => void; mention: (username: string) => void };
 
@@ -21,6 +24,8 @@ type Props = {
   replyAuthor?: Profile;
   onCancelReply: () => void;
   onEditLast: () => void;
+  onTyping?: (stop?: boolean) => void;
+  disabled?: string;
 };
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, ref) {
@@ -29,6 +34,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
   const [caret, setCaret] = useState(0);
   const [sel, setSel] = useState(0);
   const [dismissed, setDismissed] = useState<number | null>(null);
+  const [emoji, setEmoji] = useState<{ x: number; y: number } | null>(null);
+  const [face, setFace] = useState(0);
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -114,6 +121,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
     if (!content && !files.length) return;
     if (content.length > MAX_LEN) return toast(`El mensaje tiene ${content.length} caracteres; el máximo es ${MAX_LEN}.`, "error");
     void sendMessage(p.channelId, content, files.map((f) => f.file), p.replyTo?.id ?? null);
+    p.onTyping?.(true);
     setText("");
     setFiles([]);
     drafts.delete(p.channelId);
@@ -121,6 +129,16 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
   };
 
   const count = text.trim().length;
+  const insertEmoji = (e: string) => {
+    const el = ta.current;
+    const at = el ? el.selectionStart : text.length;
+    const next = text.slice(0, at) + e + text.slice(at);
+    setText(next);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(at + e.length, at + e.length);
+    });
+  };
 
   return (
     <div className="composer">
@@ -168,8 +186,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
           </div>
         )}
         <div className="composer-row">
-          <button className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Adjuntar imagen" title="Adjuntar imagen">
-            <Icon name="image" />
+          <button className="icon-btn plus-btn" onClick={() => fileInput.current?.click()} aria-label="Subir una imagen" title="Subir una imagen">
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" fill="currentColor" />
+              <path d="M12 7v10M7 12h10" stroke="var(--input-bg)" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
           </button>
           <input
             ref={fileInput}
@@ -191,6 +212,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
             aria-label={p.placeholder}
             onChange={(e) => {
               setText(e.target.value);
+              if (e.target.value.trim()) p.onTyping?.();
               setCaret(e.target.selectionStart);
               setSel(0);
               setDismissed(null);
@@ -234,11 +256,24 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
               }
             }}
           />
-          <button className="icon-btn" onClick={send} aria-label="Enviar" title="Enviar (Enter)" disabled={!count && !files.length}>
+          <button
+            className="icon-btn emoji-btn"
+            onMouseEnter={() => setFace((f) => (f + 1) % EMOJI_FACES.length)}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setEmoji({ x: r.right, y: r.top });
+            }}
+            aria-label="Elegir un emoji"
+            title="Elegir un emoji"
+          >
+            <span aria-hidden="true">{EMOJI_FACES[face]}</span>
+          </button>
+          <button className="icon-btn send-mobile" onClick={send} aria-label="Enviar" title="Enviar (Enter)" disabled={!count && !files.length}>
             <Icon name="send" />
           </button>
         </div>
       </div>
+      {emoji && <EmojiPicker at={emoji} onPick={insertEmoji} onClose={() => setEmoji(null)} />}
       {count > MAX_LEN - 200 && (
         <span className={`count${count > MAX_LEN ? " over" : ""}`}>
           {count}/{MAX_LEN}

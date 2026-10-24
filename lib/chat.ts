@@ -146,3 +146,11 @@ export function stampLabel(iso: string, now = new Date()): string {
 export function dayLabel(d: Date): string {
   return d.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
+
+/** Primer mensaje nuevo (de otra persona) después de lo último leído: ahí va la línea roja de NUEVOS. */
+export function firstUnreadId(list: Message[], lastRead: string | null | undefined, me: string): string | null {
+  if (!lastRead) return null;
+  const t = new Date(lastRead).getTime();
+  const m = list.find((x) => x.author_id !== me && !x.status && new Date(x.created_at).getTime() > t);
+  return m?.id ?? null;
+}

@@ -61,6 +61,8 @@ export type Message = {
   reply_to_id: string | null;
   created_at: string;
   edited_at: string | null;
+  pinned_at?: string | null;
+  pinned_by?: string | null;
   /** solo en el cliente */
   status?: "sending" | "failed";
   /** archivos locales mientras se suben */
@@ -97,3 +99,6 @@ export type Role = {
 };
 
 export type Ban = { server_id: string; user_id: string; reason: string; banned_by: string | null; created_at: string; profile?: Profile | null };
+
+export type Relation = { status: "friend" | "incoming" | "outgoing"; since: string };
+export type SettingsView = { kind: "user"; section: string } | { kind: "server"; serverId: string; section: string };

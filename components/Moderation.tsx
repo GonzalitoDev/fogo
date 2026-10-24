@@ -142,7 +142,7 @@ export function BansDialog({ server, onClose }: { server: Server; onClose: () =>
           })}
         </div>
       )}
-      <div className="foot">
+      <div className="foot inline-hide">
         <button className="btn ghost" onClick={onClose}>
           Cerrar
         </button>

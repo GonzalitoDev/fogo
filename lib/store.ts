@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
-import type { Ban, Presence, Status } from "./types";
+import type { Ban, Presence, Relation, SettingsView, Status } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
@@ -36,6 +36,12 @@ export type State = {
   joined: Record<string, Record<string, string>>; // serverId -> userId -> fecha en que entró
   fullProfile: string | null; // userId del perfil completo abierto
   editingProfile: boolean;
+  relations: Record<string, Relation>; // otro userId -> amigo / solicitud
+  blocked: Record<string, true>;
+  lastRead: Record<string, string | null>; // channelId -> último leído al entrar (para la línea de NUEVOS)
+  settings: SettingsView | null;
+  sounds: boolean;
+  jumpTo: string | null; // mensaje a mostrar (desde búsqueda o fijados)
 };
 
 const initial: State = {
@@ -63,6 +69,12 @@ const initial: State = {
   joined: {},
   fullProfile: null,
   editingProfile: false,
+  relations: {},
+  blocked: {},
+  lastRead: {},
+  settings: null,
+  sounds: true,
+  jumpTo: null,
 };
 
 let state: State = initial;
@@ -183,6 +195,10 @@ async function onSession(session: Session | null) {
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
   void loadBadges();
+  void loadFriends();
+  try {
+    setState({ sounds: localStorage.getItem("fogon:sounds") !== "0" });
+  } catch {}
   startRealtime();
   startPresence();
   setState({ ready: true });
@@ -432,6 +448,13 @@ function setChannelMessages(id: string, patch: Partial<ChannelMessages>) {
 }
 
 export async function openChannel(id: string) {
+  // antes de marcar como leído, guardo hasta dónde había leído (línea roja de NUEVOS)
+  if (state.unread[id]?.unread) {
+    const { data } = await supabase.rpc("fogon_last_read", { p_channel: id });
+    setState((s) => ({ lastRead: { ...s.lastRead, [id]: (data as string | null) ?? null } }));
+  } else if (!(id in state.lastRead)) {
+    setState((s) => ({ lastRead: { ...s.lastRead, [id]: null } }));
+  }
   markRead(id);
   const cur = state.messages[id];
   if (cur?.loaded || cur?.loading) return;
@@ -886,10 +909,42 @@ function onMessageInsert(m: Message) {
   const u = state.unread[m.channel_id] ?? { unread: false, mentions: 0 };
   const pinged = m.mentions.includes(me) || ch.kind === "dm";
   setState((s) => ({ unread: { ...s.unread, [m.channel_id]: { unread: true, mentions: u.mentions + (pinged ? 1 : 0) } } }));
-  if (pinged) notify(m);
+  if (pinged) {
+    notify(m);
+    if (state.sounds && state.me?.status !== "dnd") ping();
+  }
+}
+
+/** Sonidito de mención (dos notas cortas), hecho con Web Audio para no cargar archivos. */
+let actx: AudioContext | null = null;
+export function ping() {
+  try {
+    actx ??= new AudioContext();
+    const t = actx.currentTime;
+    [880, 1320].forEach((f, i) => {
+      const o = actx!.createOscillator();
+      const g = actx!.createGain();
+      o.type = "sine";
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + i * 0.09);
+      g.gain.exponentialRampToValueAtTime(0.18, t + i * 0.09 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.09 + 0.16);
+      o.connect(g).connect(actx!.destination);
+      o.start(t + i * 0.09);
+      o.stop(t + i * 0.09 + 0.18);
+    });
+  } catch {}
+}
+
+export function setSounds(on: boolean) {
+  setState({ sounds: on });
+  try {
+    localStorage.setItem("fogon:sounds", on ? "1" : "0");
+  } catch {}
 }
 
 function notify(m: Message) {
+  if (!state.sounds) return;
   try {
     if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible" || state.me?.status === "dnd") return;
     const who = state.profiles[m.author_id]?.display_name ?? "Alguien";
@@ -955,6 +1010,7 @@ function startRealtime() {
       void ensureProfiles([r.user_id]);
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_friends" }, () => friendsSoon())
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_profiles" }, (p) => {
       const np = p.new as Profile;
       if (!state.profiles[np.id]) return;
@@ -1037,4 +1093,120 @@ export async function setBadge(userId: string, badge: string, on: boolean) {
     setState({ badges: before });
     fail(error);
   }
+}
+
+/* ---------- amigos y bloqueos ---------- */
+
+export async function loadFriends() {
+  const me = meId();
+  const [f, b] = await Promise.all([supabase.from("fogon_friends").select("*"), supabase.from("fogon_blocks").select("blocked")]);
+  if (f.error) return console.warn(f.error);
+  const rel: Record<string, Relation> = {};
+  for (const r of f.data as { requester: string; addressee: string; status: string; created_at: string; accepted_at: string | null }[]) {
+    const other = r.requester === me ? r.addressee : r.requester;
+    rel[other] = r.status === "accepted" ? { status: "friend", since: r.accepted_at ?? r.created_at } : { status: r.requester === me ? "outgoing" : "incoming", since: r.created_at };
+  }
+  const blocked: Record<string, true> = {};
+  for (const r of (b.data ?? []) as { blocked: string }[]) blocked[r.blocked] = true;
+  setState({ relations: rel, blocked });
+  await ensureProfiles([...Object.keys(rel), ...Object.keys(blocked)]);
+}
+
+let friendsTimer: ReturnType<typeof setTimeout> | undefined;
+const friendsSoon = () => {
+  clearTimeout(friendsTimer);
+  friendsTimer = setTimeout(() => void loadFriends(), 250);
+};
+
+export async function sendFriendRequest(username: string): Promise<string> {
+  const { data, error } = await supabase.rpc("fogon_friend_request", { p_username: username.trim() });
+  if (error) throw error;
+  await loadFriends();
+  return data as string;
+}
+
+export async function acceptFriend(userId: string) {
+  const { error } = await supabase.rpc("fogon_friend_accept", { p_other: userId });
+  if (error) throw error;
+  await loadFriends();
+}
+
+/** Eliminar amigo, cancelar o rechazar una solicitud. */
+export async function removeFriend(userId: string) {
+  const me = meId();
+  const before = state.relations;
+  const next = { ...before };
+  delete next[userId];
+  setState({ relations: next });
+  const { error } = await supabase
+    .from("fogon_friends")
+    .delete()
+    .or(`and(requester.eq.${me},addressee.eq.${userId}),and(requester.eq.${userId},addressee.eq.${me})`);
+  if (error) {
+    setState({ relations: before });
+    throw error;
+  }
+}
+
+export async function blockUser(userId: string) {
+  const { error } = await supabase.rpc("fogon_block", { p_other: userId });
+  if (error) throw error;
+  await loadFriends();
+}
+
+export async function unblockUser(userId: string) {
+  const { error } = await supabase.from("fogon_blocks").delete().match({ blocker: meId(), blocked: userId });
+  if (error) throw error;
+  await loadFriends();
+}
+
+export const pendingIncoming = (s: State) => Object.values(s.relations).filter((r) => r.status === "incoming").length;
+
+/* ---------- fijados y búsqueda ---------- */
+
+export async function pinMessage(m: Message, on: boolean) {
+  const { error } = await supabase.rpc("fogon_pin", { p_message: m.id, p_on: on });
+  if (error) throw error;
+  patchMessage(m.channel_id, m.id, { pinned_at: on ? new Date().toISOString() : null, pinned_by: on ? meId() : null });
+  toast(on ? "Mensaje fijado" : "Se desfijó el mensaje");
+}
+
+export async function listPins(channelId: string): Promise<Message[]> {
+  const { data, error } = await supabase.from("fogon_messages").select("*").eq("channel_id", channelId).not("pinned_at", "is", null).order("pinned_at", { ascending: false });
+  if (error) throw error;
+  const msgs = data as Message[];
+  await ensureProfiles(msgs.map((m) => m.author_id));
+  return msgs.map((m) => ({ ...m, attachments: m.attachments ?? [], mentions: m.mentions ?? [] }));
+}
+
+/** Busca en los canales que ves de un servidor (o en un DM). Admite "de:@usuario". */
+export async function searchMessages(channelIds: string[], raw: string): Promise<Message[]> {
+  let q = raw.trim();
+  let author: string | null = null;
+  const m = /(?:^|\s)de:@?([a-z0-9_.]+)/i.exec(q);
+  if (m) {
+    const p = Object.values(state.profiles).find((x) => x.username === m[1].toLowerCase());
+    author = p?.id ?? "00000000-0000-0000-0000-000000000000";
+    q = q.replace(m[0], " ").trim();
+  }
+  if (!channelIds.length) return [];
+  let query = supabase.from("fogon_messages").select("*").in("channel_id", channelIds).order("created_at", { ascending: false }).limit(25);
+  if (q) query = query.ilike("content", `%${q.replace(/[%_\\]/g, (c) => "\\" + c)}%`);
+  if (author) query = query.eq("author_id", author);
+  const { data, error } = await query;
+  if (error) throw error;
+  const msgs = (data as Message[]).map((x) => ({ ...x, attachments: x.attachments ?? [], mentions: x.mentions ?? [] }));
+  await ensureProfiles(msgs.map((x) => x.author_id));
+  return msgs;
+}
+
+export function jumpToMessage(m: Message) {
+  const ch = state.channels[m.channel_id];
+  if (!ch) return;
+  go(ch.server_id ? { kind: "server", serverId: ch.server_id, channelId: ch.id } : { kind: "dm", channelId: ch.id });
+  setState({ jumpTo: m.id });
+}
+
+export function openSettings(v: SettingsView | null) {
+  setState({ settings: v });
 }

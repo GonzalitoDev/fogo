@@ -164,7 +164,7 @@ export function InviteDialog({ server, onClose }: { server: Server; onClose: () 
           y el anterior deja de funcionar.
         </p>
       )}
-      <div className="foot">
+      <div className="foot inline-hide">
         <button className="btn" onClick={onClose}>
           Listo
         </button>
@@ -268,7 +268,7 @@ export function ServerSettingsDialog({ server, onClose }: { server: Server; onCl
               Borrar servidor
             </button>
           )}
-          <button type="button" className="btn ghost" onClick={onClose}>
+          <button type="button" className="btn ghost inline-hide" onClick={onClose}>
             Cancelar
           </button>
           <button className="btn primary" disabled={busy || !name.trim()}>
@@ -556,6 +556,9 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
       await updateProfile(patch);
       old.forEach((x) => removeProfileMedia(x));
       toast("Perfil guardado");
+      setAvatar(undefined);
+      setBanner(undefined);
+      setBusy(false);
       onClose();
     } catch (e) {
       setErr(friendlyError(e));
@@ -674,7 +677,7 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
       </div>
       <Err text={err} />
       <div className="foot">
-        <button type="button" className="btn ghost" onClick={onClose}>
+        <button type="button" className="btn ghost inline-hide" onClick={onClose}>
           Cancelar
         </button>
         <button className="btn primary" disabled={busy || !d.display_name.trim()} onClick={save}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { initials } from "@/lib/chat";
 import type { Presence, Profile } from "@/lib/types";
 import { mediaUrl } from "@/lib/store";
@@ -37,8 +37,18 @@ export function useEscape(fn: () => void, active = true) {
   }, [active]);
 }
 
+/** Dentro de los ajustes a pantalla completa, los diálogos se dibujan como una sección más. */
+export const InlineModal = createContext(false);
+
 export function Modal(p: { label: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  useEscape(p.onClose);
+  const inline = useContext(InlineModal);
+  useEscape(p.onClose, !inline);
+  if (inline)
+    return (
+      <div className="inline-modal" aria-label={p.label}>
+        {p.children}
+      </div>
+    );
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && p.onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={p.label} style={p.wide ? { width: 560 } : undefined}>
@@ -79,9 +89,9 @@ export function Confirm(p: { title: string; text: string; action: string; danger
   );
 }
 
-export type MenuItem = { label: string; icon?: React.ReactNode; danger?: boolean; onClick: () => void } | "sep";
+export type MenuItem = { label: string; icon?: React.ReactNode; danger?: boolean; accent?: boolean; onClick: () => void } | "sep";
 
-export function Menu(p: { at: { x: number; y: number }; items: MenuItem[]; onClose: () => void; label: string }) {
+export function Menu(p: { at: { x: number; y: number }; items: MenuItem[]; onClose: () => void; label: string; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: p.at.x, top: p.at.y, ready: false });
   useEscape(p.onClose);
@@ -97,7 +107,7 @@ export function Menu(p: { at: { x: number; y: number }; items: MenuItem[]; onClo
       <div className="backdrop" onPointerDown={p.onClose} />
       <div
         ref={ref}
-        className="menu"
+        className={"menu" + (p.className ? " " + p.className : "")}
         role="menu"
         aria-label={p.label}
         style={{ left: pos.left, top: pos.top, visibility: pos.ready ? "visible" : "hidden" }}
@@ -115,7 +125,7 @@ export function Menu(p: { at: { x: number; y: number }; items: MenuItem[]; onClo
             <button
               key={it.label}
               role="menuitem"
-              className={it.danger ? "danger" : ""}
+              className={it.danger ? "danger" : it.accent ? "accent" : ""}
               onClick={() => {
                 p.onClose();
                 it.onClick();

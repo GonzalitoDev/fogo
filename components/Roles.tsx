@@ -71,7 +71,7 @@ export function RolesDialog({ server, onClose }: { server: Server; onClose: () =
         {!roles.length && <p className="hint">Todavía no hay roles. Creá uno, por ejemplo “Moderador”.</p>}
       </div>
       <div className="foot">
-        <button className="btn ghost" onClick={onClose}>
+        <button className="btn ghost inline-hide" onClick={onClose}>
           Cerrar
         </button>
         <button className="btn primary" disabled={nextPos < 1} onClick={() => setEditing({ name: "", color: ROLE_COLORS[1], position: Math.max(1, nextPos), hoist: true, perms: [] })}>

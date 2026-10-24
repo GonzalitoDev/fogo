@@ -3,9 +3,9 @@
 import { BadgeRow } from "./Badges";
 
 import { memo, useEffect, useRef, useState } from "react";
-import { groupReactions, MAX_LEN, stampLabel, timeShort } from "@/lib/chat";
+import { friendlyError, groupReactions, MAX_LEN, stampLabel, timeShort } from "@/lib/chat";
 import { isJumbo, parse, render } from "@/lib/markdown";
-import { cachedUrl, deleteMessage, discardFailed, editMessage, sendMessage, signedUrl, toggleReaction, useStore } from "@/lib/store";
+import { cachedUrl, deleteMessage, discardFailed, editMessage, pinMessage, sendMessage, signedUrl, toast, toggleReaction, useStore } from "@/lib/store";
 import type { Attachment, Message as Msg, Profile, Reaction } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Avatar, Confirm, EmojiPicker } from "./ui";
@@ -15,6 +15,7 @@ type Props = {
   head: boolean;
   me: string;
   canModerate: boolean;
+  canPin?: boolean;
   author?: Profile;
   authorColor?: string;
   reactions: Reaction[];
@@ -171,6 +172,11 @@ function MessageView(p: Props) {
               {p.author?.display_name ?? "…"}
             </button>
             <BadgeRow p={p.author} />
+            {m.pinned_at && (
+              <span className="pinned-mark" title="Mensaje fijado">
+                <Icon name="pin" />
+              </span>
+            )}
             <time className="when" dateTime={m.created_at} title={new Date(m.created_at).toLocaleString("es-AR")}>
               {stampLabel(m.created_at)}
             </time>
@@ -246,6 +252,16 @@ function MessageView(p: Props) {
           {mine && (
             <button className="icon-btn" onClick={() => p.onEdit(true)} aria-label="Editar" title="Editar">
               <Icon name="edit" />
+            </button>
+          )}
+          {p.canPin && (
+            <button
+              className="icon-btn"
+              onClick={() => void pinMessage(m, !m.pinned_at).catch((e) => toast(friendlyError(e), "error"))}
+              aria-label={m.pinned_at ? "Desfijar" : "Fijar mensaje"}
+              title={m.pinned_at ? "Desfijar" : "Fijar mensaje"}
+            >
+              <Icon name="pin" />
             </button>
           )}
           {(mine || p.canModerate) && (

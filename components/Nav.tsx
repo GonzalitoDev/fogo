@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { channelTree } from "@/lib/chat";
-import { can, dmUnread, go, presenceOf, serverUnread, setState, setStatus, signOut, useStore, type State } from "@/lib/store";
+import { can, dmUnread, go, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, useStore, type State } from "@/lib/store";
 import type { Status } from "@/lib/types";
 import type { Channel, Server } from "@/lib/types";
 import { Ember, Icon } from "./Icon";
+import { FriendsIcon } from "./Friends";
 import { Avatar, Menu, STATUS_LABEL, type MenuItem } from "./ui";
 
 export type NavDialogs = {
@@ -18,6 +19,7 @@ export type NavDialogs = {
   bans: (s: Server) => void;
   newDm: () => void;
   profile: () => void;
+  switcher: () => void;
 };
 
 const initialsOf = (name: string) =>
@@ -34,7 +36,7 @@ export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void
   const place = useStore((s) => s.place);
   const state = useStore((s) => s);
   const list = useMemo(() => Object.values(servers).sort((a, b) => a.created_at.localeCompare(b.created_at)), [servers]);
-  const dmCount = dmUnread(state);
+  const dmCount = dmUnread(state) + pendingIncoming(state);
   return (
     <nav className="rail" aria-label="Servidores">
       <div className={`rail-item${place.kind === "dm" ? " active" : ""}`}>
@@ -89,6 +91,7 @@ const STATUS_HINT: Record<Status, string> = {
 function MePanel({ dialogs }: { dialogs: NavDialogs }) {
   const me = useStore((s) => s.me);
   const st = useStore((s) => s);
+  const sounds = useStore((s) => s.sounds);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const pres = me ? presenceOf(st, me.id) : "offline";
   const statuses: Status[] = ["online", "idle", "dnd", "invisible"];
@@ -109,11 +112,17 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
           <span>{me?.custom_status || STATUS_LABEL[pres]}</span>
         </span>
       </button>
-      <button className="icon-btn" onClick={dialogs.profile} aria-label="Editar perfil" title="Editar perfil">
-        <Icon name="gear" />
+      <button
+        className={`icon-btn${sounds ? "" : " off"}`}
+        onClick={() => setSounds(!sounds)}
+        aria-pressed={!sounds}
+        aria-label={sounds ? "Silenciar sonidos y avisos" : "Activar sonidos y avisos"}
+        title={sounds ? "Ensordecer (sin sonidos ni avisos)" : "Dejar de ensordecer"}
+      >
+        <Icon name={sounds ? "headphones" : "headphonesOff"} />
       </button>
-      <button className="icon-btn" onClick={() => void signOut()} aria-label="Cerrar sesión" title="Cerrar sesión">
-        <Icon name="logout" />
+      <button className="icon-btn" onClick={dialogs.profile} aria-label="Ajustes de usuario" title="Ajustes de usuario">
+        <Icon name="gear" />
       </button>
       {menu && me && (
         <Menu
@@ -183,18 +192,21 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
     />
   );
   const items: MenuItem[] = [
-    { label: "Invitar gente", icon: <Icon name="link" />, onClick: () => dialogs.invite(server) },
+    { label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) },
+    ...(canServer || canRoles || can(state, server.id, "ban_members")
+      ? ([{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }] as MenuItem[])
+      : []),
     ...(owner
       ? ([
-          { label: "Crear canal", icon: <Icon name="hash" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "text", name: "", parent_id: tree.groups[0]?.cat.id ?? null }) },
+          { label: "Crear canal", icon: <Icon name="plusCircle" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "text", name: "", parent_id: tree.groups[0]?.cat.id ?? null }) },
           { label: "Crear categoría", icon: <Icon name="folder" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "category", name: "", position: tree.groups.length }) },
         ] as MenuItem[])
       : []),
     ...(canRoles ? ([{ label: "Roles", icon: <Icon name="shield" />, onClick: () => dialogs.roles(server) }] as MenuItem[]) : []),
     ...(can(state, server.id, "ban_members") ? ([{ label: "Baneos", icon: <Icon name="door" />, onClick: () => dialogs.bans(server) }] as MenuItem[]) : []),
-    ...(canServer ? ([{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }] as MenuItem[]) : []),
-    ...(!isOwner ? (["sep", { label: "Salir del servidor", icon: <Icon name="door" />, danger: true, onClick: () => dialogs.confirmLeave(server) }] as MenuItem[]) : []),
+    ...(!isOwner ? (["sep", { label: "Abandonar servidor", icon: <Icon name="door" />, danger: true, onClick: () => dialogs.confirmLeave(server) }] as MenuItem[]) : []),
   ];
+
 
   return (
     <aside className="side" aria-label={`Canales de ${server.name}`}>
@@ -202,14 +214,14 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
         <button
           className="name"
           onClick={(e) => {
-            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            setMenu({ x: r.left, y: r.bottom + 6 });
+            const r = (e.currentTarget.closest(".side-head") as HTMLElement).getBoundingClientRect();
+            setMenu(menu ? null : { x: r.left + 10, y: r.bottom + 8 });
           }}
           aria-haspopup="menu"
           aria-expanded={!!menu}
         >
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{server.name}</span>
-          <Icon name="chevron" />
+          <Icon name={menu ? "close" : "chevron"} />
         </button>
         <button className="icon-btn" onClick={() => dialogs.invite(server)} aria-label="Invitar gente" title="Invitar gente">
           <Icon name="link" />
@@ -244,7 +256,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
         {!tree.flat.length && <div className="side-empty">Este servidor no tiene canales todavía.</div>}
       </div>
       <MePanel dialogs={dialogs} />
-      {menu && <Menu at={menu} items={items} onClose={() => setMenu(null)} label={`Opciones de ${server.name}`} />}
+      {menu && <Menu at={menu} items={items} onClose={() => setMenu(null)} label={`Opciones de ${server.name}`} className="server-menu" />}
     </aside>
   );
 }
@@ -265,13 +277,33 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
   );
   return (
     <aside className="side" aria-label="Mensajes directos">
-      <div className="side-head">
-        <span className="name">Mensajes directos</span>
-        <button className="icon-btn" onClick={dialogs.newDm} aria-label="Nuevo mensaje directo" title="Nuevo mensaje directo">
-          <Icon name="plus" />
+      <div className="side-head dm-head">
+        <button className="find-btn" onClick={dialogs.switcher} aria-label="Buscar o iniciar una conversación">
+          Buscar o iniciar una conversación
         </button>
       </div>
       <div className="side-list">
+        <div className={`chan dm-top${!place.channelId ? " active" : ""}`}>
+          <span className="dm-top-ico">
+            <FriendsIcon />
+          </span>
+          <button
+            className="label"
+            onClick={() => {
+              go({ kind: "dm", channelId: null });
+              onNavigate();
+            }}
+          >
+            Amigos
+          </button>
+          {pendingIncoming(state) > 0 && <span className="badge">{pendingIncoming(state)}</span>}
+        </div>
+        <div className="cat dm-cat">
+          <span className="cat-btn">Mensajes directos</span>
+          <button className="icon-btn" onClick={dialogs.newDm} aria-label="Nuevo mensaje directo" title="Crear MD">
+            <Icon name="plus" />
+          </button>
+        </div>
         {dms.map((c) => {
           const peer = profiles[peers[c.id]];
           const active = place.channelId === c.id;
@@ -280,13 +312,14 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
             <div key={c.id} className={`chan${active ? " active" : ""}${u?.unread && !active ? " unread" : ""}`} style={{ height: 44 }}>
               <Avatar p={peer} size="sm" status={peer ? presenceOf(state, peer.id) : undefined} />
               <button
-                className="label"
+                className="label dm-label"
                 onClick={() => {
                   go({ kind: "dm", channelId: c.id });
                   onNavigate();
                 }}
               >
-                {peer?.display_name ?? "…"}
+                <span className="dm-name">{peer?.display_name ?? "…"}</span>
+                {peer?.custom_status && <span className="dm-sub">{peer.custom_status}</span>}
               </button>
               {u && u.mentions > 0 && !active && <span className="badge">{u.mentions}</span>}
             </div>
