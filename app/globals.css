@@ -1,74 +1,32 @@
-/* Fogón: noche verde-azulada con brasa ámbar. Tres paneles: rail de servidores, canales, chat (+ miembros). */
+/* Fogón con el aspecto de Discord (tema oscuro): grises, acento violeta, tipografía Noto Sans. */
 :root {
-  --rail: #e3e7e6;
-  --side: #eef1f0;
-  --chat: #fbfcfb;
-  --raise: #ffffff;
-  --hover: rgba(20, 40, 36, 0.06);
-  --active: rgba(20, 40, 36, 0.11);
-  --ink: #18201e;
-  --ink-2: #4a5754;
-  --ink-3: #7b8784;
-  --line: #d7dddb;
-  --accent: #b46a00;
+  --rail: #1e1f22;
+  --side: #2b2d31;
+  --chat: #313338;
+  --raise: #111214;
+  --float: #111214;
+  --input-bg: #383a40;
+  --hover: rgba(78, 80, 88, 0.3);
+  --active: rgba(78, 80, 88, 0.6);
+  --ink: #dbdee1;
+  --ink-strong: #f2f3f5;
+  --ink-2: #b5bac1;
+  --ink-3: #949ba4;
+  --line: #3f4147;
+  --accent: #5865f2;
+  --accent-hover: #4752c4;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(196, 122, 10, 0.12);
-  --mention-bg: rgba(214, 140, 20, 0.12);
-  --mention-bar: #d08a12;
-  --danger: #c63d33;
-  --ok: #23955e;
-  --code-bg: #e9eeec;
-  --shadow: 0 16px 40px -14px rgba(16, 28, 26, 0.35), 0 2px 8px rgba(16, 28, 26, 0.08);
-  --font-ui: "Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Unbounded", "Onest", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --rail: #0d1214;
-    --side: #141b1d;
-    --chat: #1a2224;
-    --raise: #212a2d;
-    --hover: rgba(225, 240, 235, 0.05);
-    --active: rgba(225, 240, 235, 0.1);
-    --ink: #e6ece9;
-    --ink-2: #a8b4b0;
-    --ink-3: #74817d;
-    --line: #2a3437;
-    --accent: #f2a531;
-    --accent-ink: #1c1203;
-    --accent-soft: rgba(242, 165, 49, 0.14);
-    --mention-bg: rgba(242, 165, 49, 0.09);
-    --mention-bar: #f2a531;
-    --danger: #f06a5f;
-    --ok: #4fc38a;
-    --code-bg: #121819;
-    --shadow: 0 18px 44px -12px rgba(0, 0, 0, 0.7);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --rail: #0d1214;
-  --side: #141b1d;
-  --chat: #1a2224;
-  --raise: #212a2d;
-  --hover: rgba(225, 240, 235, 0.05);
-  --active: rgba(225, 240, 235, 0.1);
-  --ink: #e6ece9;
-  --ink-2: #a8b4b0;
-  --ink-3: #74817d;
-  --line: #2a3437;
-  --accent: #f2a531;
-  --accent-ink: #1c1203;
-  --accent-soft: rgba(242, 165, 49, 0.14);
-  --mention-bg: rgba(242, 165, 49, 0.09);
-  --mention-bar: #f2a531;
-  --danger: #f06a5f;
-  --ok: #4fc38a;
-  --code-bg: #121819;
-  --shadow: 0 18px 44px -12px rgba(0, 0, 0, 0.7);
+  --accent-soft: rgba(88, 101, 242, 0.3);
+  --mention-bg: rgba(250, 168, 26, 0.1);
+  --mention-bar: #f0b232;
+  --danger: #da373c;
+  --ok: #23a55a;
+  --link: #00a8fc;
+  --code-bg: #2b2d31;
+  --shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+  --font-ui: "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Andale Mono WT", Menlo, monospace;
   color-scheme: dark;
 }
 
@@ -350,7 +308,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; }
 }
 
 /* ---------- insignias ---------- */
-.badge { display: inline-grid; place-items: center; border-radius: 6px; color: var(--b); background: color-mix(in srgb, var(--b) 16%, transparent); flex: none; }
+.insignia { display: inline-grid; place-items: center; border-radius: 6px; color: var(--b); background: color-mix(in srgb, var(--b) 16%, transparent); flex: none; }
 .badge-row { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
 .badge-more { font-size: 11px; color: var(--ink-3); font-weight: 700; }
 .meta .badge-row { margin: 0 2px; }
@@ -510,3 +468,216 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; }
 .ban-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .ban-text b { font-size: 14px; }
 .ban-reason { font-size: 13px; color: var(--ink-2); font-style: italic; overflow-wrap: anywhere; }
+
+/* =====================================================================
+   Capa "igual a Discord": medidas, formas y detalles de la interfaz
+   ===================================================================== */
+body { font-size: 16px; line-height: 1.375; background: var(--rail); }
+a { color: var(--link); }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; border-radius: 4px; }
+::-webkit-scrollbar { width: 16px; height: 16px; }
+::-webkit-scrollbar-thumb { background: #1a1b1e; border: 4px solid transparent; background-clip: padding-box; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+.msgs::-webkit-scrollbar-track { background: #2b2d31; border: 4px solid transparent; background-clip: padding-box; border-radius: 8px; }
+
+/* botones */
+.btn { height: 38px; padding: 2px 16px; border-radius: 3px; font-size: 14px; font-weight: 500; background: #4e5058; color: #fff; transition: background 0.17s; }
+.btn:hover { filter: none; background: #6d6f78; }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { background: var(--danger); }
+.btn.danger:hover { background: #a12828; }
+.btn.ghost { background: transparent; color: #fff; }
+.btn.ghost:hover { background: transparent; text-decoration: underline; }
+.icon-btn { border-radius: 4px; color: var(--ink-3); }
+.icon-btn:hover { background: transparent; color: var(--ink); }
+.icon-btn.on { background: transparent; color: var(--ink-strong); }
+.input { height: 40px; border-radius: 3px; border: 0; background: var(--rail); color: var(--ink); padding: 0 10px; }
+.input:focus { box-shadow: none; border: 0; }
+textarea.input { padding: 10px; }
+.field > span { font-size: 12px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.02em; }
+.hint { color: var(--ink-3); }
+
+/* login */
+.auth { background: radial-gradient(ellipse at 20% 10%, #404eed 0%, transparent 55%), radial-gradient(ellipse at 90% 90%, #23272a 0%, transparent 60%), #5865f2; }
+.auth-card { background: var(--chat); border-radius: 5px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); padding: 32px; }
+.auth h2, .brand h1 { color: var(--ink-strong); }
+.brand-mark { border-radius: 50%; background: var(--accent); color: #fff; }
+.tabs { background: var(--rail); border-radius: 4px; }
+.tabs button { border-radius: 3px; }
+.tabs button[aria-selected="true"] { background: var(--input-bg); color: var(--ink-strong); box-shadow: none; }
+
+/* estructura: rail 72, canales 240, miembros 240 */
+@media (min-width: 761px) {
+  .app { grid-template-columns: 72px 240px minmax(0, 1fr); }
+  .app.members-open { grid-template-columns: 72px 240px minmax(0, 1fr) 240px; }
+}
+.app { background: var(--rail); }
+.rail { gap: 8px; padding: 12px 0; background: var(--rail); }
+.rail-sep { width: 32px; height: 2px; background: #35363c; }
+.rail-btn { background: #313338; color: #dbdee1; font-family: var(--font-ui); font-weight: 500; font-size: 16px; transition: border-radius 0.2s ease, background 0.2s ease, color 0.2s ease; }
+.rail-btn:hover, .rail-item.active .rail-btn { border-radius: 16px; background: var(--accent); color: #fff; }
+.rail-btn.add { color: #23a55a; background: #313338; }
+.rail-btn.add:hover { background: #23a55a; color: #fff; }
+.rail-pill { background: #f2f3f5; left: -16px; width: 8px; border-radius: 0 4px 4px 0; transform: translate(-4px, -50%); }
+.rail-item.unread .rail-pill { height: 8px; }
+.rail-item:hover .rail-pill { height: 20px; }
+.rail-item.active .rail-pill { height: 40px; }
+.badge { background: #f23f43; border-radius: 8px; height: 16px; min-width: 16px; font-size: 12px; font-weight: 700; padding: 0 4px; }
+.rail-item .badge { box-shadow: 0 0 0 4px var(--rail); right: -4px; bottom: -4px; }
+
+/* columna de canales */
+.side { background: var(--side); border-top-left-radius: 8px; }
+.side-head { height: 48px; padding: 0 8px 0 16px; border-bottom: 0; box-shadow: 0 1px 0 rgba(4, 4, 5, 0.2), 0 1.5px 0 rgba(6, 6, 7, 0.05), 0 2px 0 rgba(4, 4, 5, 0.05); color: var(--ink-strong); font-size: 16px; font-weight: 600; transition: background 0.1s; }
+.side-head:hover { background: rgba(78, 80, 88, 0.3); }
+.side-head .name { font-weight: 600; color: var(--ink-strong); }
+.side-list { padding: 8px 8px 16px 8px; }
+.cat { margin: 16px 0 2px; }
+.cat-btn { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.02em; }
+.cat-btn:hover { color: var(--ink); }
+.chan { height: 34px; padding: 0 8px; border-radius: 4px; color: var(--ink-3); font-size: 16px; font-weight: 500; margin: 1px 0; }
+.chan:hover { background: rgba(78, 80, 88, 0.3); color: var(--ink); }
+.chan.active { background: rgba(78, 80, 88, 0.6); color: #fff; }
+.chan.unread { color: #f2f3f5; font-weight: 600; }
+.chan.unread::before { left: -8px; width: 8px; height: 8px; border-radius: 0 4px 4px 0; background: #f2f3f5; transform: translateX(-4px); }
+.chan .hash { color: #80848e; width: 20px; height: 20px; }
+.chan .badge { margin-left: auto; }
+
+/* panel del usuario abajo */
+.me-panel { background: #232428; height: 52px; padding: 0 8px; gap: 4px; }
+.me-panel .who b { font-size: 14px; font-weight: 600; color: var(--ink-strong); }
+.me-panel .who span { font-size: 12px; color: var(--ink-2); }
+.me-who:hover { background: rgba(78, 80, 88, 0.6); }
+.me-panel .avatar { --ring: #232428; }
+.me-panel .icon-btn { width: 32px; height: 32px; color: var(--ink-2); }
+.me-panel .icon-btn:hover { background: rgba(78, 80, 88, 0.6); color: var(--ink); }
+
+/* avatares */
+.avatar { font-family: var(--font-ui); font-weight: 500; font-size: 15px; text-shadow: none; }
+.avatar.sm { font-size: 12px; }
+
+/* chat */
+.chat { background: var(--chat); }
+.chat-head { height: 48px; border-bottom: 0; box-shadow: 0 1px 0 rgba(4, 4, 5, 0.2), 0 1.5px 0 rgba(6, 6, 7, 0.05), 0 2px 0 rgba(4, 4, 5, 0.05); padding: 0 8px 0 16px; z-index: 2; }
+.chat-head h2 { font-size: 16px; font-weight: 600; color: var(--ink-strong); }
+.chat-head .hash { color: #80848e; width: 24px; height: 24px; }
+.chat-head .topic { color: var(--ink-3); font-size: 14px; border-left: 1px solid var(--line); margin-left: 8px; padding-left: 8px; }
+.chat-head .icon-btn { width: 24px; height: 24px; margin: 0 8px; color: var(--ink-2); }
+.chat-head .icon-btn svg { width: 24px; height: 24px; }
+.chat-head .icon-btn.on { color: var(--ink-strong); }
+.offline { background: #f23f43; font-size: 14px; }
+
+.welcome { padding: 16px 16px 8px; margin-top: 16px; }
+.welcome .big { width: 68px; height: 68px; background: #41434a; color: #fff; }
+.welcome .big svg { width: 42px; height: 42px; }
+.welcome h3 { font-family: var(--font-ui); font-size: 32px; font-weight: 700; color: var(--ink-strong); letter-spacing: 0; margin: 8px 0; }
+.welcome p { color: var(--ink-2); font-size: 16px; }
+.day { margin: 24px 16px 8px 16px; color: var(--ink-3); font-size: 12px; font-weight: 600; }
+.day::before, .day::after { background: var(--line); }
+
+.msg { grid-template-columns: 40px minmax(0, 1fr); column-gap: 16px; padding: 2px 48px 2px 16px; min-height: 22px; }
+.msg.head { margin-top: 17px; padding-top: 2px; }
+.msg:hover { background: rgba(2, 2, 2, 0.06); }
+.msg.mentioned { background: rgba(250, 168, 26, 0.1); box-shadow: inset 2px 0 0 #f0b232; }
+.msg.mentioned:hover { background: rgba(250, 168, 26, 0.08); }
+.msg .gutter { font-size: 11px; line-height: 22px; padding-top: 0; }
+.msg .meta { gap: 8px; line-height: 22px; }
+.msg .author { font-weight: 500; font-size: 16px; color: var(--c, var(--ink-strong)); }
+.msg .when { font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 4px; }
+.msg .body { color: var(--ink); font-size: 16px; line-height: 22px; }
+.msg .edited { font-size: 10px; color: var(--ink-3); }
+.reply-ref { font-size: 14px; }
+.reply-ref::before { border-color: #4e5058; }
+.reply-ref b { color: var(--ink-2); font-weight: 500; }
+.mention { background: rgba(88, 101, 242, 0.3); color: #c9cdfb; border-radius: 3px; font-weight: 500; padding: 0 2px; }
+.mention:hover { background: var(--accent); color: #fff; }
+.mention.me { background: rgba(88, 101, 242, 0.3); color: #c9cdfb; }
+.md-code { background: #2b2d31; border: 1px solid #1e1f22; border-radius: 4px; font-size: 85%; }
+.md-block { background: #2b2d31; border: 1px solid #1e1f22; border-radius: 4px; }
+.att { border-radius: 8px; background: transparent; }
+
+.reactions { gap: 4px; margin-top: 4px; }
+.react { height: 24px; padding: 2px 6px; border-radius: 8px; background: #2b2d31; border: 1px solid transparent; }
+.react b { color: var(--ink-2); font-size: 14px; font-weight: 500; }
+.react.mine { background: rgba(88, 101, 242, 0.15); border-color: var(--accent); }
+.react.mine b { color: #dee0fc; }
+.react:hover { background: #2b2d31; border-color: #4e5058; }
+.msg-tools { background: var(--chat); border: 1px solid #1e1f22; border-radius: 4px; box-shadow: none; padding: 0; top: -25px; right: 14px; }
+.msg-tools .icon-btn { width: 32px; height: 32px; border-radius: 0; color: var(--ink-2); }
+.msg-tools .icon-btn:hover { background: rgba(78, 80, 88, 0.3); color: var(--ink); }
+.retry button { color: var(--link); }
+.edit-box textarea { background: var(--input-bg); border-radius: 8px; }
+
+/* compositor */
+.composer { padding: 0 16px 24px; }
+.composer-box { background: var(--input-bg); border: 0; border-radius: 8px; }
+.composer-box:focus-within { border-color: transparent; }
+.composer-row { padding: 0 16px 0 6px; align-items: center; min-height: 44px; }
+.composer-row textarea { padding: 11px 4px; font-size: 16px; color: var(--ink); }
+.composer-row textarea::placeholder { color: #6d6f78; }
+.composer-row .icon-btn { width: 40px; height: 44px; color: var(--ink-2); }
+.composer-bar { background: #2b2d31; border-radius: 8px 8px 0 0; border-bottom: 0; color: var(--ink-2); font-size: 14px; }
+.suggest { background: var(--side); border: 0; border-radius: 8px; box-shadow: 0 0 0 1px rgba(4, 4, 5, 0.15), 0 8px 16px rgba(0, 0, 0, 0.24); bottom: calc(100% - 16px); left: 16px; right: 16px; }
+.suggest .title { text-transform: uppercase; font-size: 12px; }
+.suggest button[aria-selected="true"] { background: rgba(78, 80, 88, 0.3); }
+
+/* miembros */
+.members { background: var(--side); padding: 0 8px 20px; }
+.members h3 { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.02em; margin: 24px 8px 4px; }
+.member { height: 42px; padding: 1px 8px; border-radius: 4px; margin: 1px 0; gap: 12px; }
+.member:hover { background: rgba(78, 80, 88, 0.3); }
+.member .nm { font-size: 16px; font-weight: 500; color: var(--c-name, var(--ink-2)); }
+.member:hover .nm { color: var(--ink); }
+.member-status { font-size: 12px; color: var(--ink-3); }
+
+/* menús, modales y emergentes como los de Discord */
+.scrim { background: rgba(0, 0, 0, 0.7); }
+.modal { background: var(--chat); border-radius: 4px; box-shadow: 0 0 0 1px rgba(32, 34, 37, 0.6), 0 2px 10px rgba(0, 0, 0, 0.2); padding: 16px; }
+.modal h2 { font-family: var(--font-ui); font-size: 20px; font-weight: 600; color: var(--ink-strong); letter-spacing: 0; }
+.modal .foot { background: var(--side); margin: 8px -16px -16px; padding: 16px; border-radius: 0 0 4px 4px; }
+.menu { background: var(--float); border: 0; border-radius: 4px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24); padding: 6px 8px; min-width: 188px; }
+.menu button { padding: 6px 8px; margin: 2px 0; border-radius: 2px; font-size: 14px; font-weight: 500; color: var(--ink-2); min-height: 32px; }
+.menu button:hover { background: var(--accent); color: #fff; }
+.menu button.danger { color: #f23f43; }
+.menu button.danger:hover { background: #da373c; color: #fff; }
+.menu hr { border-top-color: rgba(78, 80, 88, 0.48); margin: 4px; }
+.emoji-pop { background: var(--side); border: 0; border-radius: 8px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24); }
+.emoji-grid button:hover { background: rgba(78, 80, 88, 0.3); }
+.toast { border-radius: 4px; background: var(--float); box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24); }
+
+/* tarjetas de perfil con los tonos de Discord */
+.pv { --pv-bg: #232428; --pv-inner: #111214; background: #232428; border-radius: 8px; }
+.pv-avatar { background: #232428; }
+.pv-avatar .avatar { --ring: #232428; }
+.pv-inner { border-radius: 8px; }
+.pv-names h2 { font-family: var(--font-ui); font-weight: 600; color: var(--ink-strong); font-size: 20px; }
+.pv-pop { border-radius: 8px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24); }
+.pv-bubble { background: #111214; color: var(--ink); }
+.pv-bubble::before { background: #111214; }
+.pv-badges { background: #111214; }
+.pv-role { background: #2b2d31; border: 0; border-radius: 4px; }
+.pe h2 { font-family: var(--font-ui); }
+
+/* el celular vuelve a mandar sobre la capa de arriba */
+@media (max-width: 760px) {
+  .app, .app.members-open { grid-template-columns: minmax(0, 1fr); }
+  .mobile-only { display: grid; }
+  .nav-drawer { position: fixed; inset: 0; z-index: 40; display: grid; grid-template-columns: 72px minmax(0, 280px); visibility: hidden; }
+  .nav-drawer.open { visibility: visible; }
+  .nav-drawer .rail { background: var(--rail); padding-top: max(12px, env(safe-area-inset-top, 0px)); padding-left: env(safe-area-inset-left, 0px); }
+  .nav-drawer .side { border-radius: 0; padding-top: env(safe-area-inset-top, 0px); }
+  .nav-drawer::after { content: ""; grid-column: 3; }
+  .drawer-scrim { position: fixed; inset: 0; z-index: 39; background: rgba(0, 0, 0, 0.5); }
+  .members { position: fixed; top: 0; right: 0; bottom: 0; width: 260px; z-index: 41; box-shadow: var(--shadow); padding-top: max(16px, env(safe-area-inset-top, 0px)); }
+  .chat-head { padding-left: max(6px, env(safe-area-inset-left, 0px)); }
+  .chat-head .topic { display: none; }
+  .msg { padding-right: 12px; column-gap: 10px; padding-left: max(12px, env(safe-area-inset-left, 0px)); }
+  .msg-tools { right: 8px; }
+  .composer { padding: 0 max(10px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); }
+  .chan .icon-btn { display: grid; }
+}
+@media (max-width: 760px) {
+  .side { border-top-left-radius: 0; }
+  .members { padding: max(8px, env(safe-area-inset-top, 0px)) 8px 20px; }
+  .composer-row { padding: 0 8px 0 4px; }
+}

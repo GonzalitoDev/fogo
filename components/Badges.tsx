@@ -20,7 +20,7 @@ const SHAPES: Record<BadgeId, React.ReactNode> = {
 export function BadgeIcon({ id, size = 16 }: { id: BadgeId; size?: number }) {
   const b = BADGES[id];
   return (
-    <span className="badge" style={{ ["--b" as string]: b.color, width: size + 4, height: size + 4 }} title={b.label} aria-label={b.label} role="img">
+    <span className="insignia" style={{ ["--b" as string]: b.color, width: size + 4, height: size + 4 }} title={b.label} aria-label={b.label} role="img">
       <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         {SHAPES[id]}
       </svg>
