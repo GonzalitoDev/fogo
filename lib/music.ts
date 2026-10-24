@@ -9,6 +9,42 @@ import { supabase } from "./supabase";
 import { getState, setState, subscribe, toast, type MusicTrack } from "./store";
 
 export const DJ_ID = "7c1d1f00-0000-4000-8000-00000000cf01";
+export const RADIO_ID = "7c1d1f00-0000-4000-8000-00000000d001";
+export const RADIO_CH = "7c1d1f00-0000-4000-8000-00000000d002";
+
+/* ---------- Radio 24/7: cuando hay alguien escuchando y la cola se acaba, busca más ---------- */
+
+// el género cambia según la hora (mañana tranqui, tarde pop/latino, noche electrónica)
+const RADIO_GENRES: [number, string][] = [
+  [0, "Electronic"], [3, "Lo-Fi"], [8, "Acoustic"], [11, "Pop"], [14, "Latin"], [17, "Hip-Hop/Rap"], [20, "Alternative"], [22, "Electronic"],
+];
+const radioPlayed = new Set<string>();
+let radioBusy = false;
+let radioLast = 0;
+
+async function radioRefill() {
+  if (radioBusy || Date.now() - radioLast < 20000) return;
+  radioBusy = true;
+  radioLast = Date.now();
+  try {
+    const h = new Date().getHours();
+    const genre = [...RADIO_GENRES].reverse().find(([from]) => h >= from)?.[1] ?? "Electronic";
+    const ms = getState().music[RADIO_CH];
+    const skip = new Set([ms?.current?.id, ...(ms?.queue ?? []).map((t) => t.id), ...radioPlayed]);
+    let rows = (await get("/tracks/trending", { genre, limit: 40 })).filter(playable).map(toTrack);
+    if (rows.length < 5) rows = (await get("/tracks/trending", { limit: 40 })).filter(playable).map(toTrack);
+    const pick = rows.filter((t) => !skip.has(t.id)).sort(() => Math.random() - 0.5).slice(0, 3 - (ms?.queue?.length ?? 0));
+    for (const t of pick) {
+      radioPlayed.add(t.id);
+      await supabase.rpc("fogon_music_add", { p_channel: RADIO_CH, p_track: { ...t, auto: "1" }, p_text_channel: null });
+    }
+    if (radioPlayed.size > 300) radioPlayed.clear();
+  } catch {
+    // sin conexión con Audius: se reintenta en un rato
+  } finally {
+    radioBusy = false;
+  }
+}
 const API = "https://api.audius.co/v1";
 const APP = "fogon";
 
@@ -108,6 +144,8 @@ function sync() {
   const vc = s.voice?.status === "connected" ? s.voice.channelId : null;
   const ms = vc ? s.music[vc] : undefined;
   const cur = ms?.current;
+  if (vc === RADIO_CH && (!cur || (ms?.queue?.length ?? 0) < 2)) void radioRefill();
+  djNow = vc === RADIO_CH ? RADIO_ID : DJ_ID;
   if (!vc || !cur || !ms?.started_at) {
     if (audio) {
       audio.pause();
@@ -115,7 +153,7 @@ function sync() {
       audio.load();
     }
     playingKey = "";
-    if (s.speaking[DJ_ID]) setSpeakingDj(false);
+    if (s.speaking[DJ_ID] || s.speaking[RADIO_ID]) setSpeakingDj(false);
     return;
   }
   audio ??= Object.assign(new Audio(), { preload: "auto" });
@@ -150,16 +188,25 @@ function sync() {
   }
 }
 
+let djNow = DJ_ID;
 function setSpeakingDj(on: boolean) {
   setState((x) => {
     const speaking = { ...x.speaking };
-    if (on) speaking[DJ_ID] = true;
-    else delete speaking[DJ_ID];
+    delete speaking[DJ_ID];
+    delete speaking[RADIO_ID];
+    if (on) speaking[djNow] = true;
     return { speaking };
   });
 }
 
 if (typeof window !== "undefined") {
+  setInterval(() => {
+    const s = getState();
+    if (s.voice?.status === "connected" && s.voice.channelId === RADIO_CH) {
+      const ms = s.music[RADIO_CH];
+      if (!ms?.current || (ms.queue?.length ?? 0) < 2) void radioRefill();
+    }
+  }, 15000);
   try {
     const v = Number(localStorage.getItem("fogon:musicVol"));
     if (v >= 0 && v <= 1 && localStorage.getItem("fogon:musicVol") !== null) setState({ musicVolume: v });
