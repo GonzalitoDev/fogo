@@ -162,6 +162,22 @@ export function placeFromHash(): Place {
   return { kind: "dm", channelId: null };
 }
 
+export function messageFromHash(): string | null {
+  const h = typeof location === "undefined" ? "" : location.hash.replace(/^#\/?/, "");
+  const parts = h.split("/");
+  if (parts[0] === "s" && parts.length >= 4) return parts[3] || null;
+  if (parts[0] === "dm" && parts.length >= 3) return parts[2] || null;
+  return null;
+}
+
+/** Link para pegar en el chat: abre el canal (y salta al mensaje si lo pasás). */
+export function linkTo(channelId: string, messageId?: string): string {
+  const c = state.channels[channelId];
+  const base = c?.server_id ? `#/s/${c.server_id}/${channelId}` : `#/dm/${channelId}`;
+  const origin = typeof location === "undefined" ? "" : `${location.origin}${location.pathname}`;
+  return `${origin}${base}${messageId ? `/${messageId}` : ""}`;
+}
+
 export function go(place: Place) {
   const hash = place.kind === "server" ? `#/s/${place.serverId}${place.channelId ? `/${place.channelId}` : ""}` : `#/dm${place.channelId ? `/${place.channelId}` : ""}`;
   if (location.hash !== hash) history.replaceState(null, "", hash);
@@ -224,7 +240,10 @@ export async function boot() {
     else setState({ session });
   });
   window.addEventListener("hashchange", () => {
-    if (state.me) go(placeFromHash());
+    if (!state.me) return;
+    const jump = messageFromHash();
+    go(placeFromHash());
+    if (jump) setState({ jumpTo: jump });
   });
   window.addEventListener("online", () => setState({ online: true }));
   window.addEventListener("offline", () => setState({ online: false }));
@@ -273,8 +292,10 @@ async function onSession(session: Session | null) {
   startPresence();
   setState({ ready: true });
   const p = placeFromHash();
+  const jump = messageFromHash();
   if (p.kind === "server" && !state.servers[p.serverId]) go({ kind: "dm", channelId: null });
   else go(p);
+  if (jump) setState({ jumpTo: jump });
 }
 
 export async function createProfile(username: string, displayName: string, color: string) {
@@ -681,6 +702,19 @@ function flushReads() {
   pendingReads.clear();
 }
 if (typeof window !== "undefined") window.addEventListener("pagehide", flushReads);
+
+/** Marca como leídos todos los canales de texto de un servidor (o todos los DMs). */
+export async function markAllRead(serverId: string | null) {
+  setState((s) => {
+    const unread = { ...s.unread };
+    for (const c of Object.values(s.channels)) {
+      if (serverId ? c.kind === "text" && c.server_id === serverId : c.kind === "dm") unread[c.id] = { unread: false, mentions: 0 };
+    }
+    return { unread };
+  });
+  const { error } = await supabase.rpc("fogon_mark_read_all", { p_server: serverId });
+  if (error) throw error;
+}
 
 /* ---------- enviar / editar / borrar ---------- */
 
@@ -1627,6 +1661,36 @@ export function jumpToMessage(m: Message) {
   if (!ch) return;
   go(ch.server_id ? { kind: "server", serverId: ch.server_id, channelId: ch.id } : { kind: "dm", channelId: ch.id });
   setState({ jumpTo: m.id });
+}
+
+export type MentionRow = {
+  id: string;
+  channel_id: string;
+  server_id: string | null;
+  channel_kind: string;
+  channel_name: string;
+  author_id: string;
+  author_name: string;
+  author_username: string;
+  content: string;
+  created_at: string;
+};
+
+/** Bandeja de menciones: mensajes donde te nombraron, de todos los canales. */
+export async function loadMentions(limit = 50): Promise<MentionRow[]> {
+  const { data, error } = await supabase.rpc("fogon_mentions", { p_limit: limit });
+  if (error) throw error;
+  const rows = (data ?? []) as MentionRow[];
+  void ensureProfiles(rows.map((r) => r.author_id));
+  return rows;
+}
+
+/** Abre el canal del mensaje y salta a él (carga historial si hace falta). */
+export function openMention(channelId: string, messageId: string) {
+  const ch = state.channels[channelId];
+  if (!ch) return;
+  go(ch.server_id ? { kind: "server", serverId: ch.server_id, channelId: ch.id } : { kind: "dm", channelId: ch.id });
+  setState({ jumpTo: messageId });
 }
 
 export function openSettings(v: SettingsView | null) {

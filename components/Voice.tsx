@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { can, channelAllows, go, setBotsListen, setMicMuted, setVoiceMod, toast, setSounds, setState, useStore, voiceModOf, type State } from "@/lib/store";
+import { can, channelAllows, deleteChannel, fail, go, linkTo, setBotsListen, setMicMuted, setVoiceMod, toast, setSounds, setState, useStore, voiceModOf, type State } from "@/lib/store";
 import { friendlyError } from "@/lib/chat";
 import type { Channel, Profile } from "@/lib/types";
 import { joinVoice, leaveVoice, moveMember, screenSupported, setNoiseMode, startScreenShare, stopScreenShare } from "@/lib/voice";
@@ -9,7 +9,7 @@ import { listenSupported } from "@/lib/botListen";
 import { addTrack, pause, searchMusic, setMusicVolume, skip, stopMusic } from "@/lib/music";
 import type { MusicTrack } from "@/lib/store";
 import { Icon } from "./Icon";
-import { Avatar, Menu, type MenuItem } from "./ui";
+import { Avatar, Confirm, copyText, Menu, type MenuItem } from "./ui";
 import { BotTag } from "./Permissions";
 
 export type VoiceMember = { p: Profile; muted: boolean; deafened: boolean; srvMuted?: boolean; srvDeafened?: boolean; screen?: boolean };
@@ -82,10 +82,27 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; uid: string } | null>(null);
+  const [chanMenu, setChanMenu] = useState<{ x: number; y: number } | null>(null);
+  const [del, setDel] = useState(false);
+  const chanItems: MenuItem[] = [
+    { label: "Unirse a la voz", icon: <Icon name="speaker" />, onClick: onPick },
+    { label: "Copiar link", icon: <Icon name="link" />, onClick: () => void copyText(linkTo(c.id)).then((ok) => toast(ok ? "Link copiado" : "No se pudo copiar el link", ok ? "info" : "error")) },
+    ...(owner
+      ? ([
+          "sep",
+          { label: "Editar canal", icon: <Icon name="gear" />, onClick: onEdit },
+          { label: "Eliminar canal", icon: <Icon name="trash" />, danger: true, onClick: () => setDel(true) },
+        ] as MenuItem[])
+      : []),
+  ];
   return (
     <>
       <div
         className={`chan vc-chan${active ? " active" : ""}${inHere ? " joined" : ""}${over ? " drop" : ""}`}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setChanMenu({ x: e.clientX, y: e.clientY });
+        }}
         onDragOver={
           canMove
             ? (e) => {
@@ -188,6 +205,17 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
             }
             return items;
           })()}
+        />
+      )}
+      {chanMenu && <Menu label={`Opciones de ${c.name}`} at={chanMenu} onClose={() => setChanMenu(null)} items={chanItems} />}
+      {del && (
+        <Confirm
+          title={`Eliminar ${c.name}`}
+          text="Se borra el canal de voz. Si hay gente conectada, se desconecta."
+          action="Eliminar"
+          danger
+          onConfirm={() => deleteChannel(c.id).then(() => toast("Canal eliminado")).catch(fail)}
+          onClose={() => setDel(false)}
         />
       )}
     </>

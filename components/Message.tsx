@@ -7,10 +7,10 @@ import { BotTag } from "./Permissions";
 import { memo, useEffect, useRef, useState } from "react";
 import { friendlyError, groupReactions, MAX_LEN, stampLabel, timeShort } from "@/lib/chat";
 import { isJumbo, parse, render } from "@/lib/markdown";
-import { cachedUrl, deleteMessage, discardFailed, editMessage, pinMessage, sendMessage, signedUrl, toast, toggleReaction, useStore } from "@/lib/store";
+import { cachedUrl, deleteMessage, discardFailed, editMessage, linkTo, pinMessage, sendMessage, signedUrl, toast, toggleReaction, useStore } from "@/lib/store";
 import type { Attachment, Message as Msg, Profile, Reaction } from "@/lib/types";
 import { Icon } from "./Icon";
-import { Avatar, Confirm, EmojiPicker } from "./ui";
+import { Avatar, Confirm, copyText, EmojiPicker, Menu, type MenuItem } from "./ui";
 
 type Props = {
   m: Msg;
@@ -134,6 +134,7 @@ function EditBox({ m, onDone }: { m: Msg; onDone: () => void }) {
 function MessageView(p: Props) {
   const { m, me } = p;
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirm, setConfirm] = useState(false);
   const mine = m.author_id === me;
   const groups = groupReactions(p.reactions, me);
@@ -141,16 +142,26 @@ function MessageView(p: Props) {
   const jumbo = !m.attachments.length && isJumbo(m.content);
   const profiles = useStore((s) => s.profiles);
 
-  const del = (e: React.MouseEvent) => {
-    if (e.shiftKey) void deleteMessage(m);
-    else setConfirm(true);
-  };
+  const copy = (text: string, ok: string) => void copyText(text).then((done) => toast(done ? ok : "No se pudo copiar", done ? "info" : "error"));
+  const items: MenuItem[] = [
+    ...(m.content ? ([{ label: "Copiar texto", icon: <Icon name="check" />, onClick: () => copy(m.content, "Texto copiado") }] as MenuItem[]) : []),
+    { label: "Copiar link", icon: <Icon name="link" />, onClick: () => copy(linkTo(m.channel_id, m.id), "Link copiado") },
+    ...(p.canPin || mine || p.canModerate ? (["sep"] as MenuItem[]) : []),
+    ...(p.canPin ? ([{ label: m.pinned_at ? "Desfijar" : "Fijar mensaje", icon: <Icon name="pin" />, onClick: () => void pinMessage(m, !m.pinned_at).catch((e) => toast(friendlyError(e), "error")) }] as MenuItem[]) : []),
+    ...(mine ? ([{ label: "Editar", icon: <Icon name="edit" />, onClick: () => p.onEdit(true) }] as MenuItem[]) : []),
+    ...(mine || p.canModerate ? ([{ label: "Borrar", icon: <Icon name="trash" />, danger: true, onClick: () => setConfirm(true) }] as MenuItem[]) : []),
+  ];
 
   return (
     <div
       className={`msg${p.head ? " head" : ""}${mentioned ? " mentioned" : ""}${m.status ? ` ${m.status}` : ""}`}
       id={`m-${m.id}`}
       data-id={m.id}
+      onContextMenu={(e) => {
+        if (m.status || p.editing) return;
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
     >
       {m.reply_to_id && <ReplyRef id={m.reply_to_id} onJump={p.onJump} mentionLabel={p.mentionLabel} />}
       {p.head ? (
@@ -238,7 +249,7 @@ function MessageView(p: Props) {
       </div>
 
       {!m.status && !p.editing && (
-        <div className={`msg-tools${picker ? " open" : ""}`} role="toolbar" aria-label="Acciones del mensaje">
+        <div className={`msg-tools${picker || menu ? " open" : ""}`} role="toolbar" aria-label="Acciones del mensaje">
           {p.canReact !== false && (
             <button
               className="icon-btn"
@@ -255,28 +266,20 @@ function MessageView(p: Props) {
           <button className="icon-btn" onClick={p.onReply} aria-label="Responder" title="Responder">
             <Icon name="reply" />
           </button>
-          {mine && (
-            <button className="icon-btn" onClick={() => p.onEdit(true)} aria-label="Editar" title="Editar">
-              <Icon name="edit" />
-            </button>
-          )}
-          {p.canPin && (
-            <button
-              className="icon-btn"
-              onClick={() => void pinMessage(m, !m.pinned_at).catch((e) => toast(friendlyError(e), "error"))}
-              aria-label={m.pinned_at ? "Desfijar" : "Fijar mensaje"}
-              title={m.pinned_at ? "Desfijar" : "Fijar mensaje"}
-            >
-              <Icon name="pin" />
-            </button>
-          )}
-          {(mine || p.canModerate) && (
-            <button className="icon-btn danger" onClick={del} aria-label="Borrar" title="Borrar (Shift+clic borra sin preguntar)">
-              <Icon name="trash" />
-            </button>
-          )}
+          <button
+            className="icon-btn"
+            onClick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              setMenu({ x: r.right, y: r.top });
+            }}
+            aria-label="Más opciones"
+            title="Más opciones"
+          >
+            <Icon name="dots" />
+          </button>
         </div>
       )}
+      {menu && <Menu at={menu} label="Opciones del mensaje" onClose={() => setMenu(null)} items={items} />}
       {picker && <EmojiPicker at={picker} onPick={(e) => void toggleReaction(m.id, e)} onClose={() => setPicker(null)} />}
       {confirm && (
         <Confirm

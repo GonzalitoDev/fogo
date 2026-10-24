@@ -12,6 +12,7 @@ import {
   InviteAcceptDialog,
   InviteDialog,
   LeaveServerDialog,
+  MentionsDialog,
   NewDmDialog,
   ProfileDialog,
   ServerSettingsDialog,
@@ -90,6 +91,7 @@ type Dialog =
   | { kind: "boost"; server: Server }
   | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" } }
   | { kind: "dm" }
+  | { kind: "inbox" }
   | { kind: "profile" }
   | { kind: "switcher" };
 
@@ -227,6 +229,7 @@ export default function Page() {
     bans: (server) => setDialog({ kind: "bans", server }),
     boost: (server) => setDialog({ kind: "boost", server }),
     newDm: () => setDialog({ kind: "dm" }),
+    inbox: () => setDialog({ kind: "inbox" }),
     profile: () => setState({ settings: { kind: "user", section: "account" } }),
     switcher: () => setDialog({ kind: "switcher" }),
   };
@@ -304,6 +307,7 @@ export default function Page() {
       {dialog?.kind === "boost" && <BoostDialog serverId={dialog.server.id} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
+      {dialog?.kind === "inbox" && <MentionsDialog onClose={close} />}
       <FullProfile />
       <SettingsScreen />
       {dialog?.kind === "switcher" && <QuickSwitcher onClose={close} />}

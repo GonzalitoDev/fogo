@@ -73,7 +73,16 @@ export function MemberList({ server }: { server: Server }) {
           {g.people.map((p) => {
             const roles = rolesOf(state, server.id, p.id);
             return (
-              <button key={p.id} className="member" onClick={(e) => setMenu({ p, at: { x: e.clientX, y: e.clientY } })} title={roles.map((r) => r.name).join(", ") || undefined}>
+              <button
+                key={p.id}
+                className="member"
+                onClick={(e) => setMenu({ p, at: { x: e.clientX, y: e.clientY } })}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ p, at: { x: e.clientX, y: e.clientY } });
+                }}
+                title={roles.map((r) => r.name).join(", ") || undefined}
+              >
                 <Avatar p={p} size="sm" status={presenceOf(state, p.id)} />
                 <span className="member-text">
                   <span className="member-line">

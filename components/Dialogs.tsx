@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { friendlyError, slugChannel } from "@/lib/chat";
+import { friendlyError, initials, slugChannel } from "@/lib/chat";
 import {
   createServer,
   deleteChannel,
@@ -11,7 +11,10 @@ import {
   joinServer,
   myReferrals,
   leaveServer,
+  loadMentions,
+  markAllRead,
   openDm,
+  openMention,
   renameServer,
   setServerPerks,
   resetInvite,
@@ -25,6 +28,7 @@ import {
   presenceOf,
   removeProfileMedia,
   uploadProfileMedia,
+  type MentionRow,
   type ProfilePatch,
 } from "@/lib/store";
 import { ProfileView } from "./Profile";
@@ -826,6 +830,67 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
         </button>
         <button className="btn primary" disabled={busy || !d.display_name.trim()} onClick={save}>
           {busy ? "Guardando…" : "Guardar cambios"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+export function MentionsDialog({ onClose }: { onClose: () => void }) {
+  const servers = useStore((s) => s.servers);
+  const [rows, setRows] = useState<MentionRow[] | null>(null);
+  const [err, setErr] = useState("");
+  const load = () => loadMentions().then(setRows).catch((e) => setErr(friendlyError(e)));
+  useEffect(() => {
+    void load();
+  }, []);
+  const markAll = async () => {
+    try {
+      for (const id of Object.keys(servers)) await markAllRead(id);
+      await markAllRead(null);
+      toast("Listo, todo marcado como leído");
+      await load();
+    } catch (e) {
+      setErr(friendlyError(e));
+    }
+  };
+  return (
+    <Modal label="Menciones" onClose={onClose} wide>
+      <h2>Menciones</h2>
+      <p className="hint">Donde te nombraron y los mensajes directos que todavía no leíste.</p>
+      <Err text={err} />
+      {!rows && <p className="hint">Cargando…</p>}
+      {rows?.length === 0 && <p className="hint">No hay menciones ni mensajes directos sin leer.</p>}
+      {!!rows?.length && (
+        <div className="mention-list">
+          {rows.map((r) => (
+            <button
+              key={r.id}
+              className="mention-row"
+              onClick={() => {
+                onClose();
+                openMention(r.channel_id, r.id);
+              }}
+            >
+              <span className="mention-ava">{initials(r.author_name)}</span>
+              <span className="mention-txt">
+                <span className="mention-top">
+                  <b>{r.author_name}</b>
+                  <span className="mention-where">{r.channel_kind === "dm" ? "mensaje directo" : `#${r.channel_name}`}</span>
+                  <time dateTime={r.created_at}>{new Date(r.created_at).toLocaleString("es-AR")}</time>
+                </span>
+                <span className="mention-body">{r.content || "…"}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="foot">
+        <button className="btn ghost" onClick={() => void markAll()}>
+          Marcar todo como leído
+        </button>
+        <button className="btn primary" onClick={onClose}>
+          Cerrar
         </button>
       </div>
     </Modal>

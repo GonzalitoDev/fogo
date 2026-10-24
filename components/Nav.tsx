@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { channelTree } from "@/lib/chat";
-import { can, channelAllows, dmUnread, go, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, toast, useStore, type State } from "@/lib/store";
+import { can, channelAllows, deleteChannel, dmUnread, fail, go, linkTo, markAllRead, markRead, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, toast, useStore, type State } from "@/lib/store";
 import type { Status } from "@/lib/types";
 import type { Channel, Server } from "@/lib/types";
 import { Ember, Icon } from "./Icon";
 import { FriendsIcon } from "./Friends";
-import { Avatar, Menu, STATUS_LABEL, type MenuItem } from "./ui";
+import { Avatar, Confirm, copyText, Menu, STATUS_LABEL, type MenuItem } from "./ui";
 import { MicButton, VoiceConnected, VoiceRow } from "./Voice";
 import { joinVoice } from "@/lib/voice";
 import { BotTag } from "./Permissions";
@@ -27,6 +27,7 @@ export type NavDialogs = {
   newDm: () => void;
   profile: () => void;
   switcher: () => void;
+  inbox: () => void;
 };
 
 const initialsOf = (name: string) =>
@@ -38,13 +39,53 @@ const initialsOf = (name: string) =>
     .join("")
     .toUpperCase();
 
+/** Cuántas menciones sin leer hay en total (para la campanita de la bandeja). */
+export function mentionTotal(s: State): number {
+  let n = 0;
+  for (const u of Object.values(s.unread)) n += u?.mentions ?? 0;
+  return n;
+}
+
+function copyLink(channelId: string) {
+  void copyText(linkTo(channelId)).then((ok) => toast(ok ? "Link copiado" : "No se pudo copiar el link", ok ? "info" : "error"));
+}
+
+function serverMenuItems(state: State, server: Server, dialogs: NavDialogs): MenuItem[] {
+  const isOwner = state.me?.id === server.owner_id;
+  const owner = can(state, server.id, "manage_channels");
+  const canRoles = can(state, server.id, "manage_roles");
+  const canServer = can(state, server.id, "manage_server");
+  const cats = Object.values(state.channels)
+    .filter((c) => c.server_id === server.id && c.kind === "category")
+    .sort((a, b) => a.position - b.position);
+  return [
+    ...(can(state, server.id, "create_invite") ? ([{ label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) }] as MenuItem[]) : []),
+    { label: "Boostear servidor", icon: <BoostGem />, onClick: () => dialogs.boost(server) },
+    { label: "Marcar todo como leído", icon: <Icon name="check" />, onClick: () => void markAllRead(server.id).then(() => toast("Listo, todo marcado como leído")).catch(fail) },
+    ...((canServer || canRoles || can(state, server.id, "ban_members")
+      ? [{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }]
+      : []) as MenuItem[]),
+    ...(owner
+      ? ([
+          { label: "Crear canal", icon: <Icon name="plusCircle" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "text", name: "", parent_id: cats[0]?.id ?? null }) },
+          { label: "Crear categoría", icon: <Icon name="folder" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "category", name: "", position: cats.length }) },
+        ] as MenuItem[])
+      : []),
+    ...(canRoles ? ([{ label: "Roles", icon: <Icon name="shield" />, onClick: () => dialogs.roles(server) }] as MenuItem[]) : []),
+    ...(can(state, server.id, "ban_members") ? ([{ label: "Baneos", icon: <Icon name="door" />, onClick: () => dialogs.bans(server) }] as MenuItem[]) : []),
+    ...(!isOwner ? (["sep", { label: "Abandonar servidor", icon: <Icon name="door" />, danger: true, onClick: () => dialogs.confirmLeave(server) }] as MenuItem[]) : []),
+  ];
+}
+
 export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void }) {
   const servers = useStore((s) => s.servers);
   const place = useStore((s) => s.place);
   const state = useStore((s) => s);
   const list = useMemo(() => Object.values(servers).sort((a, b) => a.created_at.localeCompare(b.created_at)), [servers]);
   const dmCount = dmUnread(state) + pendingIncoming(state);
+  const [menu, setMenu] = useState<{ x: number; y: number; server: Server } | null>(null);
   return (
+    <>
     <nav className="rail" aria-label="Servidores">
       <div className={`rail-item${place.kind === "dm" ? " active" : ""}`}>
         <span className="rail-pill" />
@@ -70,6 +111,10 @@ export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void
               onClick={() => {
                 go({ kind: "server", serverId: s.id, channelId: null });
               }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, server: s });
+              }}
               aria-label={`${s.name}${u.mentions ? `, ${u.mentions} menciones` : u.unread ? ", mensajes sin leer" : ""}`}
               title={s.name}
             >
@@ -85,6 +130,8 @@ export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void
         </button>
       </div>
     </nav>
+    {menu && <Menu at={menu} items={serverMenuItems(state, menu.server, dialogs)} onClose={() => setMenu(null)} label={`Opciones de ${menu.server.name}`} className="server-menu" />}
+    </>
   );
 }
 
@@ -174,22 +221,48 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
 function ChannelRow({ c, active, owner, onEdit, onPick, unread }: { c: Channel; active: boolean; owner: boolean; onEdit: () => void; onPick: () => void; unread: State["unread"][string] | undefined }) {
   const priv = useStore((s) => [c.parent_id, c.id].some((id) => id && (s.overrides[id] ?? []).some((o) => !o.role_id && o.deny.includes("view_channel"))));
   const readOnly = useStore((s) => !channelAllows(s, c.id, "send_messages"));
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [del, setDel] = useState(false);
+  const items: MenuItem[] = [
+    { label: "Marcar como leído", icon: <Icon name="check" />, onClick: () => markRead(c.id, true) },
+    { label: "Copiar link", icon: <Icon name="link" />, onClick: () => copyLink(c.id) },
+    ...(owner
+      ? ([
+          "sep",
+          { label: "Editar canal", icon: <Icon name="gear" />, onClick: onEdit },
+          { label: "Eliminar canal", icon: <Icon name="trash" />, danger: true, onClick: () => setDel(true) },
+        ] as MenuItem[])
+      : []),
+  ];
   return (
-    <div className={`chan${active ? " active" : ""}${unread?.unread && !active ? " unread" : ""}`} title={readOnly ? "Solo lectura" : undefined}>
-      <span className="hash-wrap">
-        <Icon name="hash" className="hash" />
-        {priv && <Icon name="lock" className="hash-lock" />}
-      </span>
-      <button className="label" onClick={onPick} aria-current={active ? "page" : undefined}>
-        {c.name}
-      </button>
-      {unread && unread.mentions > 0 && !active && <span className="badge">{unread.mentions}</span>}
-      {owner && (
-        <button className="icon-btn" onClick={onEdit} aria-label={`Editar #${c.name}`} title="Editar canal">
-          <Icon name="gear" />
+    <>
+      <div className={`chan${active ? " active" : ""}${unread?.unread && !active ? " unread" : ""}`} title={readOnly ? "Solo lectura" : undefined} onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}>
+        <span className="hash-wrap">
+          <Icon name="hash" className="hash" />
+          {priv && <Icon name="lock" className="hash-lock" />}
+        </span>
+        <button className="label" onClick={onPick} aria-current={active ? "page" : undefined}>
+          {c.name}
         </button>
+        {unread && unread.mentions > 0 && !active && <span className="badge">{unread.mentions}</span>}
+        {owner && (
+          <button className="icon-btn" onClick={onEdit} aria-label={`Editar #${c.name}`} title="Editar canal">
+            <Icon name="gear" />
+          </button>
+        )}
+      </div>
+      {menu && <Menu at={menu} items={items} onClose={() => setMenu(null)} label={`Opciones de #${c.name}`} />}
+      {del && (
+        <Confirm
+          title={`Eliminar #${c.name}`}
+          text="Se borra el canal y sus mensajes para todos. No se puede deshacer."
+          action="Eliminar"
+          danger
+          onConfirm={() => deleteChannel(c.id).then(() => toast("Canal eliminado")).catch(fail)}
+          onClose={() => setDel(false)}
+        />
       )}
-    </div>
+    </>
   );
 }
 
@@ -197,13 +270,9 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
   const channels = useStore((s) => s.channels);
   const unread = useStore((s) => s.unread);
   const place = useStore((s) => s.place);
-  const me = useStore((s) => s.me);
   const state = useStore((s) => s);
-  const isOwner = me?.id === server.owner_id;
   const owner = can(state, server.id, "manage_channels");
   const level = boostLevel(server.boost_count);
-  const canRoles = can(state, server.id, "manage_roles");
-  const canServer = can(state, server.id, "manage_server");
   const tree = useMemo(() => channelTree(Object.values(channels), server.id), [channels, server.id]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -236,22 +305,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
       onEdit={() => dialogs.channelEdit({ ...c, server_id: server.id, kind: "text" })}
     />
   );
-  const items: MenuItem[] = [
-    ...(can(state, server.id, "create_invite") ? ([{ label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) }] as MenuItem[]) : []),
-    { label: "Boostear servidor", icon: <BoostGem />, onClick: () => dialogs.boost(server) },
-    ...(canServer || canRoles || can(state, server.id, "ban_members")
-      ? ([{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }] as MenuItem[])
-      : []),
-    ...(owner
-      ? ([
-          { label: "Crear canal", icon: <Icon name="plusCircle" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "text", name: "", parent_id: tree.groups[0]?.cat.id ?? null }) },
-          { label: "Crear categoría", icon: <Icon name="folder" />, onClick: () => dialogs.channelEdit({ server_id: server.id, kind: "category", name: "", position: tree.groups.length }) },
-        ] as MenuItem[])
-      : []),
-    ...(canRoles ? ([{ label: "Roles", icon: <Icon name="shield" />, onClick: () => dialogs.roles(server) }] as MenuItem[]) : []),
-    ...(can(state, server.id, "ban_members") ? ([{ label: "Baneos", icon: <Icon name="door" />, onClick: () => dialogs.bans(server) }] as MenuItem[]) : []),
-    ...(!isOwner ? (["sep", { label: "Abandonar servidor", icon: <Icon name="door" />, danger: true, onClick: () => dialogs.confirmLeave(server) }] as MenuItem[]) : []),
-  ];
+  const items: MenuItem[] = serverMenuItems(state, server, dialogs);
 
 
   return (
@@ -273,6 +327,10 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
           )}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{server.name}</span>
           <Icon name={menu ? "close" : "chevron"} />
+        </button>
+        <button className="icon-btn" onClick={dialogs.inbox} aria-label="Bandeja: menciones y mensajes directos" title="Bandeja">
+          <Icon name="bell" />
+          {mentionTotal(state) > 0 && <span className="badge">{mentionTotal(state)}</span>}
         </button>
         {can(state, server.id, "create_invite") && (
           <button className="icon-btn" onClick={() => dialogs.invite(server)} aria-label="Invitar gente" title="Invitar gente">
@@ -321,6 +379,7 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
   const unread = useStore((s) => s.unread);
   const place = useStore((s) => s.place);
   const state = useStore((s) => s);
+  const [menu, setMenu] = useState<{ x: number; y: number; c: Channel } | null>(null);
   const dms = useMemo(
     () =>
       Object.values(channels)
@@ -333,6 +392,13 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
       <div className="side-head dm-head">
         <button className="find-btn" onClick={dialogs.switcher} aria-label="Buscar o iniciar una conversación">
           Buscar o iniciar una conversación
+        </button>
+        <button className="icon-btn" onClick={dialogs.inbox} aria-label="Bandeja: menciones y mensajes directos" title="Bandeja">
+          <Icon name="bell" />
+          {mentionTotal(state) > 0 && <span className="badge">{mentionTotal(state)}</span>}
+        </button>
+        <button className="icon-btn" onClick={() => void markAllRead(null).then(() => toast("Listo, DMs marcados como leídos")).catch(fail)} aria-label="Marcar todos los mensajes directos como leídos" title="Marcar todos como leídos">
+          <Icon name="check" />
         </button>
       </div>
       <div className="side-list">
@@ -362,7 +428,15 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
           const active = place.channelId === c.id;
           const u = unread[c.id];
           return (
-            <div key={c.id} className={`chan${active ? " active" : ""}${u?.unread && !active ? " unread" : ""}`} style={{ height: 44 }}>
+            <div
+              key={c.id}
+              className={`chan${active ? " active" : ""}${u?.unread && !active ? " unread" : ""}`}
+              style={{ height: 44 }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, c });
+              }}
+            >
               <Avatar p={peer} size="sm" status={peer ? presenceOf(state, peer.id) : undefined} />
               <button
                 className="label dm-label"
@@ -383,6 +457,20 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
         {!dms.length && <div className="side-empty">Todavía no tenés charlas privadas. Tocá + y buscá a alguien por su @usuario.</div>}
       </div>
       <MePanel dialogs={dialogs} />
+      {menu && (
+        <Menu
+          at={menu}
+          label={`Opciones de ${profiles[peers[menu.c.id]]?.display_name ?? "mensaje directo"}`}
+          onClose={() => setMenu(null)}
+          items={[
+            { label: "Marcar como leído", icon: <Icon name="check" />, onClick: () => markRead(menu.c.id, true) },
+            { label: "Copiar link", icon: <Icon name="link" />, onClick: () => copyLink(menu.c.id) },
+            ...(profiles[peers[menu.c.id]]
+              ? ([{ label: "Ver perfil", icon: <Icon name="users" />, onClick: () => setState({ fullProfile: peers[menu.c.id] }) }] as MenuItem[])
+              : []),
+          ]}
+        />
+      )}
     </aside>
   );
 }
