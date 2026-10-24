@@ -1195,3 +1195,45 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
   .prem-preview { position: static; order: -1; }
   .save-bar { flex-wrap: wrap; }
 }
+
+/* ---------- bot de música ---------- */
+.vc-pane { position: relative; }
+.np-bar { flex: none; display: flex; align-items: center; gap: 12px; margin: 0 16px; padding: 10px 12px; border-radius: 10px; background-color: #0f2a19; border: 1px solid rgba(29, 185, 84, 0.45); color: #fff; }
+.np-bar img, .np-art { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex: none; background: #1db954; display: block; }
+.np-info { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.np-info b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-info > span { font-size: 12px; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-prog { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.15); overflow: hidden; margin-top: 4px; }
+.np-prog i { display: block; height: 100%; background: #1db954; transition: width 1s linear; }
+.np-time { font-size: 12px; color: #b5bac1; font-variant-numeric: tabular-nums; flex: none; }
+.np-ctrl { display: flex; gap: 4px; flex: none; }
+.np-ctrl button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.1); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.np-ctrl button:hover { background: rgba(255, 255, 255, 0.2); }
+.np-ctrl svg { width: 16px; height: 16px; }
+.vc-btn.music-btn.on { background: #1db954; color: #fff; }
+.music-panel { position: absolute; top: 56px; right: 12px; bottom: 96px; width: min(360px, calc(100% - 24px)); z-index: 5; background: var(--side); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.music-panel header { display: flex; align-items: center; gap: 8px; }
+.music-panel header b { display: flex; align-items: center; gap: 6px; color: #1db954; font-size: 16px; }
+.music-panel header b svg { width: 18px; height: 18px; }
+.music-panel header .hint { flex: 1; }
+.music-panel h4 { margin: 6px 0 0; font-size: 12px; text-transform: uppercase; color: var(--ink-3); letter-spacing: 0.02em; }
+.music-list { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 2px; }
+.music-row { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 8px; }
+.music-row:hover { background: rgba(78, 80, 88, 0.3); }
+.music-row img, .music-row .np-art { width: 40px; height: 40px; }
+.music-txt { flex: 1; min-width: 0; display: grid; }
+.music-txt b { font-size: 14px; color: var(--ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-txt span { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-row .btn { height: 30px; padding: 0 10px; font-size: 13px; flex: none; }
+.music-queue { margin: 0; padding-left: 20px; max-height: 120px; overflow-y: auto; font-size: 13px; color: var(--ink-2); }
+.music-queue b { color: var(--ink); font-weight: 500; }
+.music-panel footer { display: flex; align-items: center; gap: 10px; }
+.music-vol { flex: 1; display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.music-vol svg { width: 18px; height: 18px; flex: none; }
+.music-vol input { flex: 1; accent-color: #1db954; }
+.music-help { margin: 0; font-size: 12px; }
+@media (max-width: 760px) {
+  .np-bar { margin: 0 8px; }
+  .np-time { display: none; }
+  .music-panel { top: 8px; left: 8px; right: 8px; width: auto; bottom: 88px; }
+}

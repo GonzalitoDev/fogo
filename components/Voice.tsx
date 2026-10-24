@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { channelAllows, go, setBotsListen, setMicMuted, toast, setSounds, setState, useStore, type State } from "@/lib/store";
 import type { Channel, Profile } from "@/lib/types";
 import { joinVoice, leaveVoice, setNoiseMode } from "@/lib/voice";
 import { listenSupported } from "@/lib/botListen";
+import { addTrack, pause, searchMusic, setMusicVolume, skip, stopMusic } from "@/lib/music";
+import type { MusicTrack } from "@/lib/store";
 import { Icon } from "./Icon";
 import { Avatar } from "./ui";
 import { BotTag } from "./Permissions";
@@ -181,6 +183,7 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
   const here = voice?.channelId === channel.id;
   const caption = useStore((s) => s.voiceCaption);
   const botsHere = members.some((m) => m.p.is_bot);
+  const [musicOpen, setMusicOpen] = useState(false);
   const off = micMuted || !sounds;
   return (
     <section className="chat vc-pane">
@@ -204,7 +207,7 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
                     {m.p.is_bot && <BotTag />}
                     <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
                   </span>
-                  {m.p.is_bot && m.p.custom_status?.startsWith("🎮") && <span className="vc-activity">{m.p.custom_status}</span>}
+                  {m.p.is_bot && /^(🎮|🎵|⏸️)/u.test(m.p.custom_status ?? "") && <span className="vc-activity">{m.p.custom_status}</span>}
                   {here && caption?.botId === m.p.id && <span className="vc-caption">{caption.text}</span>}
                   {here && st && st !== "connected" && <span className="vc-state">{st === "failed" ? "Sin conexión" : "Conectando…"}</span>}
                 </button>
@@ -221,6 +224,8 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
           </div>
         )}
       </div>
+      <NowPlaying channelId={channel.id} here={here} onOpen={() => setMusicOpen(true)} />
+      {musicOpen && here && <MusicPanel channelId={channel.id} onClose={() => setMusicOpen(false)} />}
       <div className="vc-controls">
         {here ? (
           <>
@@ -229,6 +234,9 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
             </button>
             <NoiseButton className="vc-btn" />
             {botsHere && listenSupported() && <ListenButton />}
+            <button className={`vc-btn music-btn${musicOpen ? " on" : ""}`} onClick={() => setMusicOpen((o) => !o)} aria-pressed={musicOpen} aria-label="Música" title="Música (bot Temazo)">
+              <Icon name="music" />
+            </button>
             <button className={`vc-btn${!sounds ? " off" : ""}`} onClick={() => setSounds(!sounds)} aria-pressed={!sounds} aria-label={sounds ? "Ensordecer" : "Dejar de ensordecer"} title={sounds ? "Ensordecer" : "Dejar de ensordecer"}>
               <Icon name={sounds ? "headphones" : "headphonesOff"} />
             </button>
@@ -243,5 +251,153 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
         )}
       </div>
     </section>
+  );
+}
+
+/* ---------- bot de música ---------- */
+
+const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+
+/** Lo que está sonando (se ve aunque no estés en la llamada). */
+function NowPlaying({ channelId, here, onOpen }: { channelId: string; here: boolean; onOpen: () => void }) {
+  const ms = useStore((s) => s.music[channelId]);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const cur = ms?.current;
+  if (!cur || !ms.started_at) return null;
+  const end = ms.paused_at ? new Date(ms.paused_at).getTime() : Date.now();
+  const pos = Math.min(cur.duration, Math.max(0, (end - new Date(ms.started_at).getTime()) / 1000));
+  return (
+    <div className="np-bar">
+      {cur.art ? <img src={cur.art} alt="" /> : <span className="np-art" />}
+      <div className="np-info">
+        <b>{cur.title}</b>
+        <span>
+          {cur.artist}
+          {cur.by ? ` · pedido por @${cur.by}` : ""}
+        </span>
+        <div className="np-prog" aria-label={`${fmt(pos)} de ${fmt(cur.duration)}`}>
+          <i style={{ width: `${cur.duration ? (pos / cur.duration) * 100 : 0}%` }} />
+        </div>
+      </div>
+      <span className="np-time">
+        {fmt(pos)} / {fmt(cur.duration)}
+      </span>
+      {here && (
+        <div className="np-ctrl">
+          <button onClick={() => void pause(channelId, !ms.paused_at)} aria-label={ms.paused_at ? "Seguir" : "Pausar"} title={ms.paused_at ? "Seguir" : "Pausar"}>
+            <Icon name={ms.paused_at ? "play" : "pause"} />
+          </button>
+          <button onClick={() => void skip(channelId)} aria-label="Siguiente" title="Siguiente">
+            <Icon name="skip" />
+          </button>
+          <button onClick={onOpen} aria-label="Cola y buscar" title="Cola y buscar">
+            <Icon name="list" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Buscar temas, ver la cola, volumen. */
+function MusicPanel({ channelId, onClose }: { channelId: string; onClose: () => void }) {
+  const ms = useStore((s) => s.music[channelId]);
+  const vol = useStore((s) => s.musicVolume);
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState<MusicTrack[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [added, setAdded] = useState<Record<string, true>>({});
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const run = (text: string) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      setBusy(true);
+      try {
+        setRes(await searchMusic(text, 15));
+      } catch (e) {
+        toast((e as Error).message, "error");
+      } finally {
+        setBusy(false);
+      }
+    }, 350);
+  };
+  useEffect(() => run(""), []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <aside className="music-panel" aria-label="Música">
+      <header>
+        <b>
+          <Icon name="music" /> Temazo
+        </b>
+        <span className="hint">música libre de Audius</span>
+        <button className="icon-btn" onClick={onClose} aria-label="Cerrar música">
+          <Icon name="close" />
+        </button>
+      </header>
+      <input
+        className="input"
+        placeholder="Buscá un tema, artista o género"
+        value={q}
+        autoFocus
+        onChange={(e) => {
+          setQ(e.target.value);
+          run(e.target.value);
+        }}
+        aria-label="Buscar música"
+      />
+      <h4>{q.trim() ? "Resultados" : "Lo más escuchado ahora"}</h4>
+      <div className="music-list">
+        {busy && !res && <p className="hint">Buscando…</p>}
+        {res?.length === 0 && <p className="hint">No encontré nada.</p>}
+        {res?.map((t) => (
+          <div key={t.id} className="music-row">
+            {t.art ? <img src={t.art} alt="" /> : <span className="np-art" />}
+            <span className="music-txt">
+              <b>{t.title}</b>
+              <span>
+                {t.artist} · {fmt(t.duration)}
+              </span>
+            </span>
+            <button
+              className={`btn ${added[t.id] ? "" : "primary"}`}
+              disabled={!!added[t.id]}
+              onClick={() => {
+                setAdded((a) => ({ ...a, [t.id]: true }));
+                void addTrack(channelId, t);
+              }}
+            >
+              {added[t.id] ? "✓" : ms?.current ? "+ Cola" : "▶ Poner"}
+            </button>
+          </div>
+        ))}
+      </div>
+      {!!ms?.queue?.length && (
+        <>
+          <h4>En la cola ({ms.queue.length})</h4>
+          <ol className="music-queue">
+            {ms.queue.map((t, i) => (
+              <li key={t.id + i}>
+                <b>{t.title}</b> — {t.artist}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+      <footer>
+        <label className="music-vol">
+          <Icon name="speaker" />
+          <input type="range" min={0} max={1} step={0.05} value={vol} onChange={(e) => setMusicVolume(Number(e.target.value))} aria-label="Volumen de la música" />
+        </label>
+        {ms?.current && (
+          <button className="btn danger" onClick={() => void stopMusic(channelId)}>
+            Parar todo
+          </button>
+        )}
+      </footer>
+      <p className="hint music-help">También desde el chat: !play tema · !skip · !pausa · !sigue · !stop · !cola</p>
+    </aside>
   );
 }

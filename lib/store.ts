@@ -53,7 +53,12 @@ export type State = {
   botVoice: Record<string, VoiceState>; // bots conectados a canales de voz (no tienen micrófono)
   botsListen: boolean; // "los bots me escuchan": paso mi voz a texto para que contesten
   voiceCaption: { botId: string; text: string; id: number } | null; // lo que está diciendo un bot
+  music: Record<string, MusicState>; // canal de voz -> qué suena (bot de música)
+  musicVolume: number;
 };
+
+export type MusicTrack = { id: string; title: string; artist: string; art?: string; duration: number; by?: string };
+export type MusicState = { current: MusicTrack | null; started_at: string | null; paused_at: string | null; queue: MusicTrack[] };
 
 const initial: State = {
   ready: false,
@@ -97,6 +102,8 @@ const initial: State = {
   botVoice: {},
   botsListen: false,
   voiceCaption: null,
+  music: {},
+  musicVolume: 0.6,
 };
 
 let state: State = initial;
@@ -405,6 +412,7 @@ export async function loadAll() {
   ]);
   if (!overrides.error) setState({ overrides: groupOverrides(overrides.data as Override[]) });
   void loadBotVoice();
+  void loadMusic();
   const err = servers.error || channels.error || members.error || dms.error || unread.error || roles.error || memberRoles.error;
   if (err) return fail(err);
   const profiles: Record<string, Profile> = { ...state.profiles };
@@ -435,6 +443,15 @@ export async function loadAll() {
 }
 
 type MemberRoleRow = { server_id: string; user_id: string; role_id: string };
+
+/** Qué suena en los canales de voz (bot de música). */
+export async function loadMusic() {
+  const { data, error } = await supabase.from("fogon_music").select("channel_id,current,started_at,paused_at,queue");
+  if (error) return;
+  const map: Record<string, MusicState> = {};
+  for (const r of data as ({ channel_id: string } & MusicState)[]) map[r.channel_id] = { current: r.current, started_at: r.started_at, paused_at: r.paused_at, queue: r.queue ?? [] };
+  setState({ music: map });
+}
 
 /** Bots sentados en canales de voz (los pone la base según la hora). */
 export async function loadBotVoice() {
@@ -649,6 +666,8 @@ export async function sendMessage(channelId: string, content: string, files: Fil
     const list = upsertMessage(state.messages[channelId]?.list ?? [], { ...(data as Message), localFiles: undefined });
     setChannelMessages(channelId, { list });
     setState((s) => ({ reactions: { ...s.reactions, [id]: s.reactions[id] ?? [] } }));
+    // comandos del bot de música (!play, !skip…)
+    if (/^!\w/.test(content.trim())) void import("./music").then((m) => m.musicCommand(channelId, content.trim()));
   } catch (e) {
     // si ya se insertó (el eco llegó por Realtime), no es un fallo
     if (/duplicate key/.test(String((e as { message?: string })?.message))) return patchMessage(channelId, id, { status: undefined });
@@ -1177,6 +1196,10 @@ function startRealtime() {
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_friends" }, () => friendsSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_channel_overrides" }, () => reloadSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_bot_voice" }, () => void loadBotVoice())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_music" }, (p) => {
+      const r = p.new as { channel_id?: string } & MusicState;
+      if (r?.channel_id) setState((s) => ({ music: { ...s.music, [r.channel_id!]: { current: r.current, started_at: r.started_at, paused_at: r.paused_at, queue: r.queue ?? [] } } }));
+    })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_profiles" }, (p) => {
       const np = p.new as Profile;
       if (!state.profiles[np.id]) return;
