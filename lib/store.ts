@@ -241,6 +241,8 @@ async function onSession(session: Session | null) {
   const { data: ban } = await supabase.from("fogon_account_bans").select("reason").eq("user_id", me.id).maybeSingle();
   if (ban) return suspend(ban.reason ?? "");
   rememberProfile(me);
+  // contraseña temporal puesta por el equipo: tiene que elegir una propia antes de seguir
+  if (session.user.user_metadata?.must_change_password) setState({ recovery: true });
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
   void loadBadges();

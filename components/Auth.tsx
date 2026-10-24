@@ -231,7 +231,7 @@ export function NewPasswordScreen() {
           if (pass !== again) return setErr("Las contraseñas no coinciden.");
           setBusy(true);
           setErr("");
-          const { error } = await supabase.auth.updateUser({ password: pass });
+          const { error } = await supabase.auth.updateUser({ password: pass, data: { must_change_password: false } });
           setBusy(false);
           if (error) return setErr(friendlyError(error));
           setState({ recovery: false });
@@ -239,6 +239,7 @@ export function NewPasswordScreen() {
         }}
       >
         <h2 style={{ margin: 0 }}>Elegí una contraseña nueva</h2>
+        <p className="hint" style={{ margin: 0 }}>Para cuidar tu cuenta, elegí una contraseña que solo sepas vos.</p>
         <label className="field">
           <span>Contraseña nueva</span>
           <input id="new-password" className="input" type="password" autoComplete="new-password" required minLength={6} value={pass} onChange={(e) => setPass(e.target.value)} />
