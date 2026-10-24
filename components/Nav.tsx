@@ -11,6 +11,8 @@ import { Avatar, Menu, STATUS_LABEL, type MenuItem } from "./ui";
 import { MicButton, VoiceConnected, VoiceRow } from "./Voice";
 import { joinVoice } from "@/lib/voice";
 import { BotTag } from "./Permissions";
+import { BoostGem } from "./Boost";
+import { boostLevel } from "@/lib/boost";
 
 export type NavDialogs = {
   createServer: () => void;
@@ -20,6 +22,7 @@ export type NavDialogs = {
   confirmLeave: (s: Server) => void;
   roles: (s: Server) => void;
   bans: (s: Server) => void;
+  boost: (s: Server) => void;
   newDm: () => void;
   profile: () => void;
   switcher: () => void;
@@ -62,7 +65,7 @@ export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void
           <div key={s.id} className={`rail-item${active ? " active" : ""}${u.unread ? " unread" : ""}`}>
             <span className="rail-pill" />
             <button
-              className="rail-btn"
+              className={`rail-btn${boostLevel(s.boost_count) >= 2 ? " boosted" : ""}`}
               onClick={() => {
                 go({ kind: "server", serverId: s.id, channelId: null });
               }}
@@ -182,6 +185,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
   const state = useStore((s) => s);
   const isOwner = me?.id === server.owner_id;
   const owner = can(state, server.id, "manage_channels");
+  const level = boostLevel(server.boost_count);
   const canRoles = can(state, server.id, "manage_roles");
   const canServer = can(state, server.id, "manage_server");
   const tree = useMemo(() => channelTree(Object.values(channels), server.id), [channels, server.id]);
@@ -218,6 +222,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
   );
   const items: MenuItem[] = [
     { label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) },
+    { label: "Boostear servidor", icon: <BoostGem />, onClick: () => dialogs.boost(server) },
     ...(canServer || canRoles || can(state, server.id, "ban_members")
       ? ([{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }] as MenuItem[])
       : []),
@@ -235,7 +240,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
 
   return (
     <aside className="side" aria-label={`Canales de ${server.name}`}>
-      <div className="side-head">
+      <div className={`side-head${level >= 1 ? " has-banner" : ""}`} style={level >= 1 ? { ["--bc" as string]: server.banner_color || "#ff73fa" } : undefined}>
         <button
           className="name"
           onClick={(e) => {
@@ -245,6 +250,11 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
           aria-haspopup="menu"
           aria-expanded={!!menu}
         >
+          {level >= 1 && (
+            <span className="srv-level" title={`Nivel ${level} de boosts · ${server.boost_count} boosts`}>
+              <BoostGem />
+            </span>
+          )}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{server.name}</span>
           <Icon name={menu ? "close" : "chevron"} />
         </button>

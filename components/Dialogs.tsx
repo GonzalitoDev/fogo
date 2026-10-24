@@ -13,6 +13,7 @@ import {
   leaveServer,
   openDm,
   renameServer,
+  setServerPerks,
   resetInvite,
   setServerIcon,
   saveChannel,
@@ -30,6 +31,8 @@ import { ProfileView } from "./Profile";
 import { ChannelPermissions } from "./Permissions";
 import type { Channel, Server } from "@/lib/types";
 import { Icon } from "./Icon";
+import { BoostGem } from "./Boost";
+import { boostLevel } from "@/lib/boost";
 import { Avatar, COLORS, Confirm, Modal, copyText } from "./ui";
 
 function Err({ text }: { text: string }) {
@@ -291,8 +294,12 @@ function ServerIconPicker({ server }: { server: Server }) {
   );
 }
 
-export function ServerSettingsDialog({ server, onClose }: { server: Server; onClose: () => void }) {
+export function ServerSettingsDialog({ server: initial, onClose }: { server: Server; onClose: () => void }) {
+  const server = useStore((s) => s.servers[initial.id]) ?? initial;
   const isOwner = useStore((s) => s.me?.id === server.owner_id);
+  const level = boostLevel(server.boost_count);
+  const [banner, setBanner] = useState(server.banner_color ?? "#ff73fa");
+  const [vanity, setVanity] = useState(server.invite_vanity ? server.invite_code : "");
   const [name, setName] = useState(server.name);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -306,6 +313,9 @@ export function ServerSettingsDialog({ server, onClose }: { server: Server; onCl
           setBusy(true);
           try {
             await renameServer(server.id, name);
+            if (isOwner && level >= 1 && banner !== (server.banner_color ?? "#ff73fa")) await setServerPerks(server.id, { banner });
+            if (isOwner && level >= 3 && vanity.trim() && vanity.trim().toLowerCase() !== (server.invite_vanity ? server.invite_code : ""))
+              await setServerPerks(server.id, { vanity: vanity.trim() });
             onClose();
           } catch (e) {
             setErr(friendlyError(e));
@@ -320,6 +330,32 @@ export function ServerSettingsDialog({ server, onClose }: { server: Server; onCl
           <span>Nombre</span>
           <input id="server-rename" className="input" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        {isOwner && (
+          <div className="field boost-perks">
+            <span>
+              <BoostGem /> Mejoras por boosts · {level ? `Nivel ${level}` : "sin nivel"} ({server.boost_count ?? 0} boosts)
+            </span>
+            <label className="perk-row">
+              <span>Color del banner</span>
+              {level >= 1 ? (
+                <input type="color" value={banner} onChange={(e) => setBanner(e.target.value)} aria-label="Color del banner" />
+              ) : (
+                <small>🔒 Nivel 1 (2 boosts)</small>
+              )}
+            </label>
+            <label className="perk-row">
+              <span>Link personalizado</span>
+              {level >= 3 ? (
+                <span className="vanity">
+                  ?invite=
+                  <input className="input" maxLength={20} placeholder="miserver" value={vanity} onChange={(e) => setVanity(e.target.value.replace(/[^a-z0-9]/gi, "").toLowerCase())} aria-label="Link personalizado" />
+                </span>
+              ) : (
+                <small>🔒 Nivel 3 (14 boosts)</small>
+              )}
+            </label>
+          </div>
+        )}
         <Err text={err} />
         <div className="foot">
           {isOwner && (

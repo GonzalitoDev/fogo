@@ -1259,3 +1259,47 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .admin-premium b.on { color: #ff73fa; }
 .admin-premium .btn { height: 28px; padding: 0 10px; font-size: 13px; flex: none; }
 .admin-sub { margin: 4px 6px 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ink-3); letter-spacing: .02em; }
+
+/* boosts de servidor */
+.boost-gem { color: #ff73fa; flex: none; vertical-align: middle; }
+.boost-gem.big { width: 44px; height: 44px; filter: drop-shadow(0 0 12px rgba(255, 115, 250, .55)); }
+.member-boost { width: 13px; height: 13px; }
+.srv-level { display: inline-flex; margin-right: 6px; }
+.side-head.has-banner { height: 96px; align-items: flex-start; padding-top: 12px; border-bottom: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bc) 85%, #000) 0%, color-mix(in srgb, var(--bc) 45%, transparent) 60%, transparent 100%),
+              radial-gradient(120% 90% at 85% 0%, color-mix(in srgb, var(--bc) 70%, #fff) 0%, transparent 60%); }
+.side-head.has-banner .name, .side-head.has-banner .icon-btn { color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
+.rail-btn.boosted { box-shadow: 0 0 0 2px #ff73fa, 0 0 14px rgba(255, 115, 250, .65); animation: boost-glow 2.6s ease-in-out infinite; }
+@keyframes boost-glow { 50% { box-shadow: 0 0 0 2px #ff73fa, 0 0 22px rgba(255, 115, 250, .9); } }
+@media (prefers-reduced-motion: reduce) { .rail-btn.boosted { animation: none; } }
+.boost-dlg { display: grid; gap: 12px; }
+.boost-hero { text-align: center; display: grid; justify-items: center; gap: 4px; }
+.boost-hero h2 { margin: 4px 0 0; }
+.boost-hero p { margin: 0; color: var(--ink-2); }
+.boost-bar { position: relative; height: 8px; border-radius: 99px; background: var(--hover); margin: 8px 6px 22px; }
+.boost-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #b473f8, #ff73fa); transition: width .4s; }
+.boost-mark { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--side, #2b2d31); border: 2px solid var(--ink-3); }
+.boost-mark.on { border-color: #ff73fa; background: #ff73fa; }
+.boost-mark span { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.boost-mark:last-child span { transform: translateX(-85%); }
+.boost-next { text-align: center; margin: 0; }
+.boost-levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.boost-level { border-radius: 10px; padding: 10px; background: var(--hover); opacity: .75; }
+.boost-level.on { opacity: 1; box-shadow: inset 0 0 0 1px #ff73fa; }
+.boost-level h3 { margin: 0 0 4px; font-size: 14px; }
+.boost-level h3 small { color: var(--ink-3); font-weight: 500; }
+.boost-level ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
+.boost-sub { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; color: var(--ink-3); }
+.boost-people { display: grid; gap: 4px; max-height: 160px; overflow: auto; }
+.boost-person { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.boost-n { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; color: var(--ink-3); font-size: 12px; }
+.boost-mine p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.btn.boost-btn { background: linear-gradient(90deg, #b473f8, #ff73fa); color: #fff; }
+.btn.boost-btn .boost-gem { color: #fff; }
+.boost-perks { display: grid; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--hover); }
+.boost-perks > span { display: flex; align-items: center; gap: 6px; }
+.perk-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+.perk-row small { color: var(--ink-3); }
+.perk-row input[type="color"] { width: 44px; height: 28px; border: 0; padding: 0; background: none; cursor: pointer; }
+.vanity { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-3); font-size: 13px; }
+.vanity .input { width: 140px; height: 32px; }

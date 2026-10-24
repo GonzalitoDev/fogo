@@ -35,6 +35,9 @@ export type Server = {
   invite_code: string;
   created_at: string;
   icon_url?: string | null;
+  boost_count?: number;
+  banner_color?: string | null;
+  invite_vanity?: boolean;
 };
 
 export type ChannelKind = "text" | "category" | "dm" | "voice";
@@ -125,3 +128,5 @@ export const CHAN_PERMS: { id: ChanPerm; label: string; help: string }[] = [
   { id: "attach_files", label: "Adjuntar archivos", help: "Subir imágenes a los mensajes." },
 ];
 export type Override = { id: string; server_id: string; channel_id: string; role_id: string | null; allow: ChanPerm[]; deny: ChanPerm[] };
+
+export type Boost = { user_id: string; slot: number; server_id: string | null; boosted_at: string | null };

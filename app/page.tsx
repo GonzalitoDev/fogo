@@ -25,6 +25,7 @@ import { FullProfile } from "@/components/Profile";
 import { FriendsPage } from "@/components/Friends";
 import { loadFont, SettingsScreen } from "@/components/Settings";
 import { BansDialog } from "@/components/Moderation";
+import { BoostDialog } from "@/components/Boost";
 import { VoicePane } from "@/components/Voice";
 import { applyAppTheme } from "@/lib/premium";
 
@@ -36,6 +37,7 @@ type Dialog =
   | { kind: "leave"; server: Server }
   | { kind: "roles"; server: Server }
   | { kind: "bans"; server: Server }
+  | { kind: "boost"; server: Server }
   | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" } }
   | { kind: "dm" }
   | { kind: "profile" }
@@ -157,6 +159,7 @@ export default function Page() {
     confirmLeave: (server) => setDialog({ kind: "leave", server }),
     roles: (server) => setDialog({ kind: "roles", server }),
     bans: (server) => setDialog({ kind: "bans", server }),
+    boost: (server) => setDialog({ kind: "boost", server }),
     newDm: () => setDialog({ kind: "dm" }),
     profile: () => setState({ settings: { kind: "user", section: "account" } }),
     switcher: () => setDialog({ kind: "switcher" }),
@@ -232,6 +235,7 @@ export default function Page() {
       {dialog?.kind === "leave" && <LeaveServerDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "roles" && <RolesDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "bans" && <BansDialog server={dialog.server} onClose={close} />}
+      {dialog?.kind === "boost" && <BoostDialog serverId={dialog.server.id} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
       <FullProfile />

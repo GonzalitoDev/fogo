@@ -1,9 +1,9 @@
 /** Opus afinado para voz en tiempo real: paquetes de 10 ms, corrección de errores, sin DTX. */
-export function tuneOpus(sdp: string): string {
+export function tuneOpus(sdp: string, bitrate = 64000): string {
   const m = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
   if (!m) return sdp;
   const pt = m[1];
-  const want: Record<string, string> = { minptime: "10", useinbandfec: "1", usedtx: "0", stereo: "0", "sprop-stereo": "0", maxaveragebitrate: "64000" };
+  const want: Record<string, string> = { minptime: "10", useinbandfec: "1", usedtx: "0", stereo: "0", "sprop-stereo": "0", maxaveragebitrate: String(bitrate) };
   const re = new RegExp(`a=fmtp:${pt} ([^\\r\\n]*)`);
   const f = sdp.match(re);
   if (f) {

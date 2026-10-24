@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { can, fail, kickMember, nameColor, openDm, presenceOf, rolesOf, topPosition, useStore } from "@/lib/store";
+import { can, fail, kickMember, nameColor, openDm, presenceOf, rolesOf, serverBoosters, topPosition, useStore } from "@/lib/store";
 import type { Profile, Role, Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { MemberRolesDialog } from "./Roles";
@@ -11,9 +11,11 @@ import { BadgeRow } from "./Badges";
 import { ProfilePopout } from "./Profile";
 import { BanDialog } from "./Moderation";
 import { BotTag } from "./Permissions";
+import { BoostGem } from "./Boost";
 
 export function MemberList({ server }: { server: Server }) {
   const state = useStore((s) => s);
+  const boosters = serverBoosters(state, server.id);
   const me = state.me;
   const [menu, setMenu] = useState<{ p: Profile; at: { x: number; y: number } } | null>(null);
   const [kick, setKick] = useState<Profile | null>(null);
@@ -79,6 +81,7 @@ export function MemberList({ server }: { server: Server }) {
                       <Name p={p} color={nameColor(state, server.id, p.id)} />
                     </span>
                     {p.is_bot && <BotTag official={p.is_official} />}
+                    {boosters[p.id] && <BoostGem className="member-boost" title={`Boostea este servidor${boosters[p.id] > 1 ? ` ×${boosters[p.id]}` : ""}`} />}
                     {p.id === server.owner_id && (
                       <span className="crown" title="Dueño del servidor" aria-label="Dueño del servidor">
                         👑

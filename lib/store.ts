@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, SUPABASE_KEY, SUPABASE_URL, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
-import type { Ban, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
+import type { Ban, Boost, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
@@ -31,6 +31,7 @@ export type State = {
   online: boolean;
   toast: { id: number; text: string; tone: "info" | "error" } | null;
   badges: Record<string, string[]>; // userId -> insignias dadas a mano
+  boosts: Boost[]; // boosts de servidor (cuentas Premium)
   isAdmin: boolean;
   presence: Record<string, Presence>; // userId -> conectado ahora (Realtime Presence)
   joined: Record<string, Record<string, string>>; // serverId -> userId -> fecha en que entró
@@ -80,6 +81,7 @@ const initial: State = {
   online: true,
   toast: null,
   badges: {},
+  boosts: [],
   isAdmin: false,
   presence: {},
   joined: {},
@@ -225,6 +227,7 @@ async function onSession(session: Session | null) {
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
   void loadBadges();
+  void loadBoosts();
   void loadFriends();
   try {
     setState({ sounds: localStorage.getItem("fogon:sounds") !== "0", micMuted: localStorage.getItem("fogon:mic") === "0" });
@@ -1240,6 +1243,7 @@ function startRealtime() {
       void ensureProfiles([r.user_id]);
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_boosts" }, () => boostsSoon())
     // leído en otro dispositivo: acá también deja de estar sin leer
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_read_states" }, (p) => {
       const r = p.new as { user_id?: string; channel_id?: string; last_read_at?: string };
@@ -1306,6 +1310,49 @@ export function dmUnread(s: State): number {
   let n = 0;
   for (const c of Object.values(s.channels)) if (c.kind === "dm") n += s.unread[c.id]?.mentions ?? 0;
   return n;
+}
+
+/* ---------- boosts de servidor ---------- */
+
+export async function loadBoosts() {
+  const { data, error } = await supabase.from("fogon_boosts").select("user_id,slot,server_id,boosted_at");
+  if (error) return console.warn(error);
+  setState({ boosts: (data ?? []) as Boost[] });
+}
+let boostTimer: ReturnType<typeof setTimeout> | undefined;
+const boostsSoon = () => {
+  clearTimeout(boostTimer);
+  boostTimer = setTimeout(() => void loadBoosts(), 250);
+};
+
+/** Quiénes boostean este servidor (userId -> cantidad). */
+export function serverBoosters(s: State, serverId: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const b of s.boosts) if (b.server_id === serverId && s.profiles[b.user_id]?.premium !== false) out[b.user_id] = (out[b.user_id] ?? 0) + 1;
+  return out;
+}
+
+async function refreshServer(serverId: string) {
+  const { data } = await supabase.from("fogon_servers").select("*").eq("id", serverId).maybeSingle();
+  if (data) setState((s) => ({ servers: { ...s.servers, [serverId]: data as Server } }));
+}
+
+export async function boostServer(serverId: string) {
+  const { error } = await supabase.rpc("fogon_boost", { p_server: serverId });
+  if (error) throw error;
+  await Promise.all([loadBoosts(), refreshServer(serverId)]);
+}
+
+export async function unboostServer(serverId: string) {
+  const { error } = await supabase.rpc("fogon_unboost", { p_server: serverId });
+  if (error) throw error;
+  await Promise.all([loadBoosts(), refreshServer(serverId)]);
+}
+
+export async function setServerPerks(serverId: string, perks: { banner?: string | null; vanity?: string | null }) {
+  const { error } = await supabase.rpc("fogon_server_perks", { p_server: serverId, p_banner: perks.banner ?? null, p_vanity: perks.vanity ?? null });
+  if (error) throw error;
+  await refreshServer(serverId);
 }
 
 /* ---------- insignias ---------- */

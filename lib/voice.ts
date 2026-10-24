@@ -3,8 +3,16 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { botSay } from "./botListen";
 import { tuneOpus } from "./opus";
+import { boostLevel, voiceBitrate } from "./boost";
 import { supabase } from "./supabase";
 import { getState, retrackPresence, setState, subscribe, toast } from "./store";
+
+/** Calidad de voz del servidor donde estoy (sube con los boosts). */
+function bitrateNow(): number {
+  const s = getState();
+  const sid = s.voice?.serverId;
+  return voiceBitrate(boostLevel(sid ? s.servers[sid]?.boost_count : 0));
+}
 
 /*
  * Canales de voz: WebRTC de a pares (malla). Cada canal de voz tiene un canal
@@ -250,7 +258,7 @@ function peerFor(uid: string): Peer {
     // la voz primero: prioridad alta en la red
     const params = p.sender.getParameters();
     if (params.encodings?.length) {
-      params.encodings.forEach((e) => Object.assign(e, { priority: "high", networkPriority: "high", maxBitrate: 64000 }));
+      params.encodings.forEach((e) => Object.assign(e, { priority: "high", networkPriority: "high", maxBitrate: bitrateNow() }));
       void p.sender.setParameters(params).catch(() => {});
     }
   }
@@ -296,7 +304,7 @@ function dropPeer(uid: string) {
 async function call(uid: string, restart = false) {
   const p = peerFor(uid);
   const offer = await p.pc.createOffer(restart ? { iceRestart: true } : undefined);
-  const sdp = tuneOpus(offer.sdp ?? "");
+  const sdp = tuneOpus(offer.sdp ?? "", bitrateNow());
   await p.pc.setLocalDescription({ type: "offer", sdp });
   send({ from: meId(), to: uid, type: "offer", sdp });
 }
@@ -306,16 +314,16 @@ async function onSignal(m: Sig) {
   try {
     if (m.type === "offer") {
       const p = peerFor(m.from);
-      await p.pc.setRemoteDescription({ type: "offer", sdp: tuneOpus(m.sdp) });
+      await p.pc.setRemoteDescription({ type: "offer", sdp: tuneOpus(m.sdp, bitrateNow()) });
       for (const c of p.pending.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
       const answer = await p.pc.createAnswer();
-      const sdp = tuneOpus(answer.sdp ?? "");
+      const sdp = tuneOpus(answer.sdp ?? "", bitrateNow());
       await p.pc.setLocalDescription({ type: "answer", sdp });
       send({ from: meId(), to: m.from, type: "answer", sdp });
     } else if (m.type === "answer") {
       const p = peers.get(m.from);
       if (!p || p.pc.signalingState !== "have-local-offer") return;
-      await p.pc.setRemoteDescription({ type: "answer", sdp: tuneOpus(m.sdp) });
+      await p.pc.setRemoteDescription({ type: "answer", sdp: tuneOpus(m.sdp, bitrateNow()) });
       for (const c of p.pending.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
     } else if (m.type === "ice") {
       const p = peerFor(m.from);
