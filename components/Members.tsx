@@ -78,7 +78,7 @@ export function MemberList({ server }: { server: Server }) {
                     <span className="nm">
                       <Name p={p} color={nameColor(state, server.id, p.id)} />
                     </span>
-                    {p.is_bot && <BotTag />}
+                    {p.is_bot && <BotTag official={p.is_official} />}
                     {p.id === server.owner_id && (
                       <span className="crown" title="Dueño del servidor" aria-label="Dueño del servidor">
                         👑

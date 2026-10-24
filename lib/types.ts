@@ -14,6 +14,7 @@ export type Profile = {
   status?: Status;
   custom_status?: string;
   is_bot?: boolean;
+  is_official?: boolean;
   premium?: boolean;
   name_style?: "gradiente" | "brillo" | "arcoiris" | null;
   name_c1?: string | null;

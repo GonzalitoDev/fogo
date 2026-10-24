@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { initials } from "@/lib/chat";
 import type { Presence, Profile } from "@/lib/types";
 import { mediaUrl } from "@/lib/store";
+import { Ember } from "./Icon";
 
 export const COLORS = ["#e07a3f", "#d4a72c", "#4f9d69", "#2f9c95", "#3f7fd1", "#7a63d6", "#c4569b", "#d0504a", "#6b7b77"];
 
@@ -13,7 +14,7 @@ export function Avatar({ p, size = "md", status, src: override }: { p?: Profile 
   useEffect(() => setBroken(false), [src]);
   return (
     <span className={`avatar ${size === "md" ? "" : size}${src && !broken ? " has-img" : ""}`} style={{ ["--c" as string]: p?.color ?? "#6b7b77" }} aria-hidden="true">
-      {src && !broken ? <img src={src} alt="" draggable={false} onError={() => setBroken(true)} /> : initials(p?.display_name ?? "?")}
+      {p?.is_official ? <Ember className="official-ember" /> : src && !broken ? <img src={src} alt="" draggable={false} onError={() => setBroken(true)} /> : initials(p?.display_name ?? "?")}
       {p?.premium && p.avatar_deco && size !== "xs" && <span className={`deco deco-${p.avatar_deco}`} aria-hidden="true" />}
       {status && <span className={`status-dot s-${status}`} title={STATUS_LABEL[status]} />}
     </span>

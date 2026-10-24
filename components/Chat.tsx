@@ -5,13 +5,69 @@ import { ProfilePopout } from "./Profile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildRows, channelTree, dayLabel, firstUnreadId, friendlyError, timeShort } from "@/lib/chat";
 import { typingText, useTyping } from "@/lib/typing";
-import { can, channelAllows, fail, jumpToMessage, listPins, loadOlder, nameColor, presenceOf, searchMessages, setState, useStore } from "@/lib/store";
+import { can, channelAllows, fail, jumpToMessage, listPins, loadOlder, nameColor, presenceOf, searchMessages, setState, toast, useStore } from "@/lib/store";
 import type { Channel, Message as Msg, Profile } from "@/lib/types";
 import { Composer, type ComposerHandle } from "./Composer";
 import { Icon } from "./Icon";
 import { Message } from "./Message";
 import { Avatar, STATUS_LABEL, useEscape } from "./ui";
 import { render, parse } from "@/lib/markdown";
+import { BotTag } from "./Permissions";
+import { supabase } from "@/lib/supabase";
+
+const OWNER_ID = "e7809edc-8559-4df6-8d2b-1fffc7a27719";
+
+/** Hilo oficial: nadie responde; el dueño de Fogón puede mandar un aviso a todos. */
+function OfficialBar({ isOwner }: { isOwner: boolean }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!isOwner)
+    return (
+      <div className="composer blocked-composer">
+        <div className="composer-box">
+          <Icon name="lock" /> Este hilo está reservado para avisos oficiales de Fogón.
+        </div>
+      </div>
+    );
+  const send = async () => {
+    const body = text.trim();
+    if (!body || busy) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("fogon_official_broadcast", { p_body: body });
+    setBusy(false);
+    if (error) return toast(friendlyError(error), "error");
+    setText("");
+    toast(`📣 Aviso oficial enviado a ${data} ${data === 1 ? "persona" : "personas"}`);
+  };
+  return (
+    <form
+      className="composer official-composer"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send();
+      }}
+    >
+      <div className="composer-box">
+        <textarea
+          value={text}
+          maxLength={2000}
+          rows={2}
+          placeholder="Escribí un aviso oficial: le llega a todos los usuarios de Fogón"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+        />
+        <button type="submit" className="btn primary" disabled={busy || !text.trim()}>
+          {busy ? "Enviando…" : "📣 Enviar a todos"}
+        </button>
+      </div>
+    </form>
+  );
+}
 
 const EMPTY: never[] = [];
 
@@ -197,7 +253,10 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         </button>
         {isDm ? <Avatar p={peer} size="xs" status={peer ? presenceOf(state, peer.id) : undefined} /> : <Icon name="hash" className="hash" />}
         <h2>{title}</h2>
-        {isDm && peer && <span className="head-status">{peer.custom_status || STATUS_LABEL[presenceOf(state, peer.id)]}</span>}
+        {isDm && peer?.is_official && <BotTag official />}
+        {isDm && peer?.is_official ? (
+          <span className="head-status">Avisos oficiales</span>
+        ) : isDm && peer && <span className="head-status">{peer.custom_status || STATUS_LABEL[presenceOf(state, peer.id)]}</span>}
         {!isDm && channel.topic && <span className="topic">{channel.topic}</span>}
         <span className="spacer" />
         <button
@@ -260,7 +319,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
             <div className="welcome">
               <div className="big">{isDm ? <Avatar p={peer} /> : <Icon name="hash" />}</div>
               <h3>{isDm ? peer?.display_name ?? "Mensaje directo" : `Bienvenido a #${channel.name}`}</h3>
-              <p>{isDm ? `Este es el comienzo de tu charla con @${peer?.username ?? "…"}.` : `Este es el comienzo del canal #${channel.name}.${channel.topic ? ` ${channel.topic}` : ""}`}</p>
+              <p>{isDm && peer?.is_official ? "Este es el hilo oficial de Fogón: acá llegan las novedades y los avisos importantes." : isDm ? `Este es el comienzo de tu charla con @${peer?.username ?? "…"}.` : `Este es el comienzo del canal #${channel.name}.${channel.topic ? ` ${channel.topic}` : ""}`}</p>
             </div>
           )}
           {(!cm || cm.loading) && <div className="loading-more">Cargando mensajes…</div>}
@@ -325,7 +384,9 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         </div>
       </div>
 
-      {isDm && peer && blocked[peer.id] ? (
+      {isDm && peer?.is_official ? (
+        <OfficialBar isOwner={me?.id === OWNER_ID} />
+      ) : isDm && peer && blocked[peer.id] ? (
         <div className="composer blocked-composer">
           <div className="composer-box">No podés mandarle mensajes a un usuario que bloqueaste.</div>
         </div>

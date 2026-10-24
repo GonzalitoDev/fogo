@@ -6,14 +6,14 @@ import { removeOverride, serverRoles, setOverride, toast, useStore } from "@/lib
 import { CHAN_PERMS, type Channel, type ChanPerm } from "@/lib/types";
 import { Icon } from "./Icon";
 
-/** Etiqueta BOT como en Discord. */
-export function BotTag() {
+/** Etiqueta BOT como en Discord (u OFICIAL para la cuenta de Fogón). */
+export function BotTag({ official }: { official?: boolean }) {
   return (
-    <span className="bot-tag" title="Bot de la comunidad: no es una persona">
+    <span className={`bot-tag${official ? " official" : ""}`} title={official ? "Cuenta oficial de Fogón" : "Bot de la comunidad: no es una persona"}>
       <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
         <path d="M6.6 11.6 3 8l1.1-1.1 2.5 2.5L11.9 4 13 5.1z" fill="currentColor" />
       </svg>
-      BOT
+      {official ? "OFICIAL" : "BOT"}
     </span>
   );
 }

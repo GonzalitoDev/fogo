@@ -109,7 +109,7 @@ export function ProfileView({
       <div className="pv-inner">
         <div className="pv-names">
           <h2>
-            <Name p={p} /> {p.is_bot && <BotTag />}
+            <Name p={p} /> {p.is_bot && <BotTag official={p.is_official} />}
           </h2>
           <div className="pv-handle">
             <span>{p.username}</span>

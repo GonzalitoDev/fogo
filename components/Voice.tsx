@@ -136,7 +136,7 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
               <button className="vc-person" onClick={() => setState({ fullProfile: m.p.id })} title={canMove ? `Arrastrá a ${m.p.display_name} a otro canal de voz` : undefined}>
                 <Avatar p={m.p} size="xs" />
                 <span className="vc-name">{m.p.display_name}</span>
-                {m.p.is_bot && <BotTag />}
+                {m.p.is_bot && <BotTag official={m.p.is_official} />}
                 <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
               </button>
               {canMove && (
@@ -282,7 +282,7 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
                   <Avatar p={m.p} size="lg" />
                   <span className="vc-tag">
                     {m.p.display_name}
-                    {m.p.is_bot && <BotTag />}
+                    {m.p.is_bot && <BotTag official={m.p.is_official} />}
                     <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
                   </span>
                   {m.p.is_bot && /^(🎮|🎵|⏸️)/u.test(m.p.custom_status ?? "") && <span className="vc-activity">{m.p.custom_status}</span>}

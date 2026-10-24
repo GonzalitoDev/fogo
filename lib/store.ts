@@ -131,7 +131,7 @@ export function fail(e: unknown) {
   toast(friendlyError(e), "error");
 }
 
-export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status,is_bot,premium,name_style,name_c1,name_c2,avatar_deco,profile_effect,app_theme,app_accent";
+export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status,is_bot,is_official,premium,name_style,name_c1,name_c2,avatar_deco,profile_effect,app_theme,app_accent";
 const meId = () => state.session?.user.id ?? "";
 
 /* ---------- lugar actual (en el hash para que sobreviva a recargar) ---------- */

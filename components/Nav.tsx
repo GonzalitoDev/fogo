@@ -10,6 +10,7 @@ import { FriendsIcon } from "./Friends";
 import { Avatar, Menu, STATUS_LABEL, type MenuItem } from "./ui";
 import { MicButton, VoiceConnected, VoiceRow } from "./Voice";
 import { joinVoice } from "@/lib/voice";
+import { BotTag } from "./Permissions";
 
 export type NavDialogs = {
   createServer: () => void;
@@ -342,8 +343,10 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
                   onNavigate();
                 }}
               >
-                <span className="dm-name">{peer?.display_name ?? "…"}</span>
-                {peer?.custom_status && <span className="dm-sub">{peer.custom_status}</span>}
+                <span className="dm-name">
+                  {peer?.display_name ?? "…"} {peer?.is_official && <BotTag official />}
+                </span>
+                {!peer?.is_official && peer?.custom_status && <span className="dm-sub">{peer.custom_status}</span>}
               </button>
               {u && u.mentions > 0 && !active && <span className="badge">{u.mentions}</span>}
             </div>

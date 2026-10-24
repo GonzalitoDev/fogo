@@ -174,7 +174,7 @@ function MessageView(p: Props) {
             <button className="author" style={{ ["--c" as string]: p.authorColor ?? "var(--ink)" }} onClick={(e) => p.author && p.onAuthor(p.author, { x: e.clientX, y: e.clientY })}>
               <Name p={p.author} />
             </button>
-            {p.author?.is_bot && <BotTag />}
+            {p.author?.is_bot && <BotTag official={p.author?.is_official} />}
             <BadgeRow p={p.author} />
             {m.pinned_at && (
               <span className="pinned-mark" title="Mensaje fijado">
