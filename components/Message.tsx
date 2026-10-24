@@ -69,7 +69,7 @@ function ReplyRef({ id, onJump, mentionLabel }: { id: string; onJump: (id: strin
   const text = loaded.content.replace(/\s+/g, " ").slice(0, 140) || "Imagen";
   return (
     <button className="reply-ref" onClick={() => onJump(id)} aria-label={`Ir al mensaje de ${author?.display_name ?? "alguien"}`}>
-      <span className="avatar xs" style={{ ["--c" as string]: author?.color ?? "#6b7b77" }} aria-hidden="true" />
+      <Avatar p={author} size="xs" />
       <b style={{ color: author?.color }}>@{author?.display_name ?? "…"}</b>
       <span>{render(parse(text), { mentionLabel })}</span>
     </button>

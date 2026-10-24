@@ -575,7 +575,7 @@ textarea.input { padding: 10px; }
 .day { margin: 24px 16px 8px 16px; color: var(--ink-3); font-size: 12px; font-weight: 600; }
 .day::before, .day::after { background: var(--line); }
 
-.msg { grid-template-columns: 40px minmax(0, 1fr); column-gap: 16px; padding: 2px 48px 2px 16px; min-height: 22px; }
+.msg { grid-template-columns: 40px minmax(0, 1fr); column-gap: 16px; padding: 2px 48px 2px 16px; }
 .msg.head { margin-top: 17px; padding-top: 2px; }
 .msg:hover { background: rgba(2, 2, 2, 0.06); }
 .msg.mentioned { background: rgba(250, 168, 26, 0.1); box-shadow: inset 2px 0 0 #f0b232; }
@@ -978,3 +978,6 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .blocked-composer .composer-box svg { width: 18px; height: 18px; }
 .composer-row .plus-btn:disabled { opacity: 0.35; }
 @media (max-width: 760px) { .perms-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* los mensajes nunca se achican para entrar en la pantalla (se encimaban) */
+.msgs > div > *, .msg, .day, .new-divider, .welcome, .blocked-msg { flex-shrink: 0; }

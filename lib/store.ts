@@ -533,6 +533,8 @@ async function imageSize(file: File): Promise<{ width?: number; height?: number 
 const pendingFiles: Record<string, File[]> = {};
 
 export async function sendMessage(channelId: string, content: string, files: File[], replyTo: string | null, retryId?: string) {
+  // al escribir vos, la línea de NUEVOS desaparece (como en Discord)
+  if (state.lastRead[channelId]) setState((s) => ({ lastRead: { ...s.lastRead, [channelId]: null } }));
   const id = retryId ?? crypto.randomUUID();
   const me = meId();
   if (!retryId) {
