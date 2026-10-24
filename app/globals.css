@@ -1407,3 +1407,23 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .deco-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1180px) { .deco-layout { grid-template-columns: 1fr; } .deco-preview { order: -1; position: static; } }
 @media (max-width: 560px) { .deco-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* menú de ajustes: con la ventana bajita los títulos no se aplastan (la lista scrollea) */
+.settings-side-in { align-self: flex-start; min-height: 100%; }
+.settings-side h3, .settings-side button, .settings-side hr { flex: none; min-height: max-content; }
+
+/* eliminar cuenta */
+.del-warn { padding: 12px 14px; border-radius: 8px; background: color-mix(in srgb, var(--danger) 14%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); font-size: 14px; }
+.del-warn ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); display: grid; gap: 4px; }
+
+/* cámara */
+.cam-box { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .cam-box { grid-template-columns: 1fr; } }
+.cam-preview { aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; display: grid; place-items: center; }
+.cam-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam-preview.mirror video { transform: scaleX(-1); }
+.cam-off { text-align: center; color: var(--ink-3); padding: 16px; }
+.cam-off span { font-size: 34px; }
+.cam-off p { margin: 6px 0 0; font-size: 14px; }
+.cam-controls { display: grid; gap: 12px; }
+.cam-controls select.input { height: 40px; }

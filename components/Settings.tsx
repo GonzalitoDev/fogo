@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { friendlyError } from "@/lib/chat";
 import { supabase } from "@/lib/supabase";
-import { can, fail, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
+import { can, deleteMyAccount, fail, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
 import type { Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
 import { RolesDialog } from "./Roles";
 import { BansDialog } from "./Moderation";
-import { Avatar, InlineModal, useEscape } from "./ui";
+import { Avatar, InlineModal, Modal, useEscape } from "./ui";
 import { setNoiseMode, startMicTest, type MicTest, type NoiseMode } from "@/lib/voice";
 import { applyAppTheme, EFFECTS, NAME_STYLES, THEMES } from "@/lib/premium";
 import { DECO_COLLECTIONS, decoLabel, type AvatarDeco } from "@/lib/decos";
@@ -106,7 +106,7 @@ function UserSettings({ section }: { section: string }) {
     { id: "premium", label: "Premium ✨" },
     { group: "Ajustes de la aplicación" },
     { id: "appearance", label: "Apariencia" },
-    { id: "voice", label: "Voz" },
+    { id: "voice", label: "Voz y video" },
     { id: "notifications", label: "Notificaciones" },
     { id: "keys", label: "Atajos de teclado" },
   ];
@@ -150,6 +150,7 @@ function Account({ onEdit }: { onEdit: () => void }) {
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
   const [busy, setBusy] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
   const banner = mediaUrl(me.banner_path);
   const hidden = email.replace(/^(.{0,2})[^@]*/, (_, a) => a + "••••••");
   return (
@@ -226,7 +227,80 @@ function Account({ onEdit }: { onEdit: () => void }) {
           Cambiar contraseña
         </button>
       </form>
+      {me.id !== "e7809edc-8559-4df6-8d2b-1fffc7a27719" && (
+        <>
+          <hr className="settings-hr" />
+          <h2>Eliminar cuenta</h2>
+          <p className="hint">Se borra tu perfil y salís de todos los servidores. No se puede deshacer.</p>
+          <button className="btn danger" onClick={() => setAskDelete(true)}>
+            Eliminar cuenta
+          </button>
+          {askDelete && <DeleteAccountDialog onClose={() => setAskDelete(false)} />}
+        </>
+      )}
     </>
+  );
+}
+
+function DeleteAccountDialog({ onClose }: { onClose: () => void }) {
+  const me = useStore((s) => s.me)!;
+  const servers = useStore((s) => s.servers);
+  const ownsServers = Object.values(servers).filter((x) => x.owner_id === me.id).map((x) => x.name);
+  const [pass, setPass] = useState("");
+  const [sure, setSure] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const ok = sure.trim().toLowerCase() === me.username.toLowerCase() && pass.length >= 6;
+  return (
+    <Modal label="Eliminar cuenta" onClose={onClose}>
+      <form
+        style={{ display: "grid", gap: 14 }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!ok) return;
+          setBusy(true);
+          setErr("");
+          try {
+            await deleteMyAccount(pass);
+          } catch (e) {
+            setErr(friendlyError(e));
+            setBusy(false);
+          }
+        }}
+      >
+        <h2>Eliminar tu cuenta</h2>
+        <div className="del-warn">
+          <b>⚠️ Esto no se puede deshacer.</b>
+          <ul>
+            <li>Tu perfil, amigos, insignias y Premium se borran.</li>
+            <li>Salís de todos los servidores.</li>
+            <li>Tus mensajes quedan, pero firmados como «Usuario eliminado».</li>
+            {ownsServers.length > 0 && <li>Tus servidores ({ownsServers.join(", ")}) pasan a la persona de más rango; si no queda nadie, se borran.</li>}
+          </ul>
+        </div>
+        <label className="field">
+          <span>Escribí tu usuario ({me.username}) para confirmar</span>
+          <input className="input" value={sure} onChange={(e) => setSure(e.target.value)} autoComplete="off" />
+        </label>
+        <label className="field">
+          <span>Tu contraseña</span>
+          <input className="input" type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} />
+        </label>
+        {err && (
+          <div className="err" role="alert">
+            {err}
+          </div>
+        )}
+        <div className="foot">
+          <button type="button" className="btn ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="btn danger" disabled={!ok || busy}>
+            {busy ? "Eliminando…" : "Eliminar mi cuenta"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -617,7 +691,7 @@ function VoiceSettings() {
   };
   return (
     <>
-      <h1>Voz</h1>
+      <h1>Voz y video</h1>
       <h3 className="settings-sub">Supresión de ruido</h3>
       <div className="noise-opts" role="radiogroup" aria-label="Supresión de ruido">
         {NOISE.map((n) => (
@@ -666,8 +740,135 @@ function VoiceSettings() {
         Escucharme mientras pruebo (usá auriculares)
       </label>
       {err && <p className="add-bad">{err}</p>}
+      <hr className="settings-hr" />
+      <CameraSettings />
     </>
   );
+}
+
+/** Cámara: elegir cuál usar, verla en vivo y si se muestra en espejo. Queda guardado en este dispositivo. */
+function CameraSettings() {
+  const [cams, setCams] = useState<MediaDeviceInfo[]>([]);
+  const [camId, setCamId] = useState(() => readPref("fogon:camera", ""));
+  const [mirror, setMirror] = useState(() => readPref("fogon:cameraMirror", "1") === "1");
+  const [quality, setQuality] = useState(() => readPref("fogon:cameraQuality", "720"));
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [err, setErr] = useState("");
+  const video = useRef<HTMLVideoElement>(null);
+
+  const listCams = async () => {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setCams(all.filter((d) => d.kind === "videoinput"));
+    } catch {}
+  };
+  useEffect(() => {
+    void listCams();
+  }, []);
+  useEffect(() => {
+    if (video.current) video.current.srcObject = stream;
+    return () => stream?.getTracks().forEach((t) => t.stop());
+  }, [stream]);
+
+  const start = async (id = camId, q = quality) => {
+    setErr("");
+    stream?.getTracks().forEach((t) => t.stop());
+    try {
+      const h = Number(q);
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { ...(id ? { deviceId: { exact: id } } : {}), height: { ideal: h }, width: { ideal: Math.round((h * 16) / 9) } },
+        audio: false,
+      });
+      setStream(s);
+      void listCams(); // con permiso ya se ven los nombres de las cámaras
+    } catch (e) {
+      const n = (e as Error)?.name;
+      setStream(null);
+      setErr(n === "NotAllowedError" ? "Fogón no tiene permiso para usar tu cámara. Habilitalo en el candadito de la barra de direcciones." : n === "NotFoundError" || n === "OverconstrainedError" ? "No encontramos esa cámara. ¿Está conectada?" : "No pudimos abrir la cámara (¿la está usando otra app?).");
+    }
+  };
+  const save = (k: string, v: string) => {
+    try {
+      localStorage.setItem(k, v);
+    } catch {}
+  };
+
+  return (
+    <>
+      <h3 className="settings-sub">Cámara</h3>
+      <div className="cam-box">
+        <div className={`cam-preview${mirror ? " mirror" : ""}`}>
+          {stream ? (
+            <video ref={video} autoPlay playsInline muted />
+          ) : (
+            <div className="cam-off">
+              <span>📷</span>
+              <p>{err || "Probá tu cámara para ver cómo te ven."}</p>
+            </div>
+          )}
+        </div>
+        <div className="cam-controls">
+          <label className="field">
+            <span>Cámara</span>
+            <select
+              className="input"
+              value={camId}
+              onChange={(e) => {
+                setCamId(e.target.value);
+                save("fogon:camera", e.target.value);
+                if (stream) void start(e.target.value);
+              }}
+            >
+              <option value="">La predeterminada</option>
+              {cams.map((c, i) => (
+                <option key={c.deviceId || i} value={c.deviceId}>
+                  {c.label || `Cámara ${i + 1}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Calidad</span>
+            <select
+              className="input"
+              value={quality}
+              onChange={(e) => {
+                setQuality(e.target.value);
+                save("fogon:cameraQuality", e.target.value);
+                if (stream) void start(camId, e.target.value);
+              }}
+            >
+              <option value="360">Baja (360p) · menos datos</option>
+              <option value="720">Buena (720p)</option>
+              <option value="1080">Alta (1080p)</option>
+            </select>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={mirror}
+              onChange={(e) => {
+                setMirror(e.target.checked);
+                save("fogon:cameraMirror", e.target.checked ? "1" : "0");
+              }}
+            />
+            Verme en espejo (los demás te ven al derecho)
+          </label>
+          <button className={`btn ${stream ? "" : "primary"}`} onClick={() => (stream ? setStream(null) : void start())}>
+            {stream ? "Apagar cámara" : "Probar cámara"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function readPref(k: string, d: string) {
+  try {
+    return localStorage.getItem(k) ?? d;
+  } catch {
+    return d;
+  }
 }
 
 function Keys() {

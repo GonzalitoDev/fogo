@@ -194,10 +194,27 @@ export default function Page() {
         </div>
       </main>
     );
+  const toastEl = toast && (
+    <div key={toast.id} className={`toast${toast.tone === "error" ? " error" : ""}`} role={toast.tone === "error" ? "alert" : "status"}>
+      {toast.text}
+    </div>
+  );
   if (suspended) return <SuspendedScreen reason={suspended.reason} />;
   if (!ready) return <LoadScreen />;
-  if (!session) return <AuthScreen />;
-  if (recovery) return <NewPasswordScreen />;
+  if (!session)
+    return (
+      <>
+        <AuthScreen />
+        {toastEl}
+      </>
+    );
+  if (recovery)
+    return (
+      <>
+        <NewPasswordScreen />
+        {toastEl}
+      </>
+    );
   if (needsProfile || !me) return <ProfileSetup />;
 
   const dialogs: NavDialogs = {
@@ -291,11 +308,7 @@ export default function Page() {
       <SettingsScreen />
       {dialog?.kind === "switcher" && <QuickSwitcher onClose={close} />}
 
-      {toast && (
-        <div key={toast.id} className={`toast${toast.tone === "error" ? " error" : ""}`} role={toast.tone === "error" ? "alert" : "status"}>
-          {toast.text}
-        </div>
-      )}
+      {toastEl}
     </div>
   );
 }

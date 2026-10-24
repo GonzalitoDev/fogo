@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, RECOVERY_LINK, SUPABASE_KEY, SUPABASE_URL, supabase } from "./supabase";
-import { forgetSession, rememberProfile, rememberSession } from "./accounts";
+import { forgetAccount, forgetSession, rememberProfile, rememberSession } from "./accounts";
 import { friendlyError, upsertMessage } from "./chat";
 import type { Ban, Boost, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
@@ -142,7 +142,7 @@ export function fail(e: unknown) {
   toast(friendlyError(e), "error");
 }
 
-export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status,is_bot,is_official,premium,name_style,name_c1,name_c2,avatar_deco,profile_effect,app_theme,app_accent";
+export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status,is_bot,is_official,deleted_at,premium,name_style,name_c1,name_c2,avatar_deco,profile_effect,app_theme,app_accent";
 const meId = () => state.session?.user.id ?? "";
 
 /* ---------- lugar actual (en el hash para que sobreviva a recargar) ---------- */
@@ -240,6 +240,13 @@ async function onSession(session: Session | null) {
   if (!me) return setState({ ready: true, needsProfile: true });
   const { data: ban } = await supabase.from("fogon_account_bans").select("reason").eq("user_id", me.id).maybeSingle();
   if (ban) return suspend(ban.reason ?? "");
+  if (me.deleted_at) {
+    // la cuenta de Fogón se eliminó (el login puede seguir vivo por otra app del proyecto)
+    forgetAccount(me.id);
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    setTimeout(() => toast("Esa cuenta de Fogón fue eliminada.", "error"), 300);
+    return;
+  }
   rememberProfile(me);
   // contraseña temporal puesta por el equipo: tiene que elegir una propia antes de seguir
   if (session.user.user_metadata?.must_change_password) setState({ recovery: true });
@@ -1368,6 +1375,22 @@ export async function unbanAccount(userId: string) {
   const { error } = await supabase.rpc("fogon_account_unban", { p_user: userId });
   if (error) throw error;
   await loadAccountBans();
+}
+
+/* ---------- eliminar mi cuenta ---------- */
+
+/** Comprueba la contraseña y elimina la cuenta (queda como "Usuario eliminado"). */
+export async function deleteMyAccount(password: string) {
+  const email = state.session?.user.email;
+  const id = state.me?.id;
+  if (!email || !id) throw new Error("Tenés que iniciar sesión.");
+  const check = await supabase.auth.signInWithPassword({ email, password });
+  if (check.error) throw new Error("La contraseña no es correcta.");
+  const { error } = await supabase.rpc("fogon_delete_account");
+  if (error) throw error;
+  forgetAccount(id);
+  await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+  setTimeout(() => toast("Tu cuenta de Fogón se eliminó. ¡Gracias por haber pasado por el fogón! 🔥"), 300);
 }
 
 /* ---------- Equipo de Fogón ---------- */
