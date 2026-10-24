@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { channelAllows, go, setMicMuted, setSounds, setState, useStore, type State } from "@/lib/store";
+import { channelAllows, go, setBotsListen, setMicMuted, toast, setSounds, setState, useStore, type State } from "@/lib/store";
 import type { Channel, Profile } from "@/lib/types";
 import { joinVoice, leaveVoice, setNoiseMode } from "@/lib/voice";
+import { listenSupported } from "@/lib/botListen";
 import { Icon } from "./Icon";
 import { Avatar } from "./ui";
 import { BotTag } from "./Permissions";
@@ -77,7 +78,7 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
                 <Avatar p={m.p} size="xs" />
                 <span className="vc-name">{m.p.display_name}</span>
                 {m.p.is_bot && <BotTag />}
-                <MuteIcons m={m} />
+                <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
               </button>
             </li>
           ))}
@@ -121,6 +122,25 @@ export function VoiceConnected() {
   );
 }
 
+/** "Los bots me escuchan": tu voz se pasa a texto para que los bots de la llamada te contesten. */
+function ListenButton() {
+  const on = useStore((s) => s.botsListen);
+  return (
+    <button
+      className={`vc-btn listen-btn${on ? " on" : ""}`}
+      onClick={() => {
+        if (!on) toast("Los bots te van a contestar cuando hables. Tu voz se pasa a texto con el reconocimiento del navegador (en Chrome lo procesa Google).");
+        setBotsListen(!on);
+      }}
+      aria-pressed={on}
+      aria-label={on ? "Los bots te escuchan: activado" : "Que los bots me escuchen y contesten"}
+      title={on ? "Los bots te escuchan (tocá para apagar)" : "Que los bots me escuchen y contesten"}
+    >
+      <Icon name="bot" />
+    </button>
+  );
+}
+
 /** Prende / apaga la supresión de ruido con IA (como el botón de Krisp en Discord). */
 export function NoiseButton({ className }: { className: string }) {
   const mode = useStore((s) => s.noiseMode);
@@ -159,6 +179,8 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
   const peers = useStore((s) => s.voicePeers);
   const canView = useStore((s) => channelAllows(s, channel.id, "view_channel"));
   const here = voice?.channelId === channel.id;
+  const caption = useStore((s) => s.voiceCaption);
+  const botsHere = members.some((m) => m.p.is_bot);
   const off = micMuted || !sounds;
   return (
     <section className="chat vc-pane">
@@ -180,9 +202,10 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
                   <span className="vc-tag">
                     {m.p.display_name}
                     {m.p.is_bot && <BotTag />}
-                    <MuteIcons m={m} />
+                    <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
                   </span>
                   {m.p.is_bot && m.p.custom_status?.startsWith("🎮") && <span className="vc-activity">{m.p.custom_status}</span>}
+                  {here && caption?.botId === m.p.id && <span className="vc-caption">{caption.text}</span>}
                   {here && st && st !== "connected" && <span className="vc-state">{st === "failed" ? "Sin conexión" : "Conectando…"}</span>}
                 </button>
               );
@@ -205,6 +228,7 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
               <Icon name={off ? "micOff" : "mic"} />
             </button>
             <NoiseButton className="vc-btn" />
+            {botsHere && listenSupported() && <ListenButton />}
             <button className={`vc-btn${!sounds ? " off" : ""}`} onClick={() => setSounds(!sounds)} aria-pressed={!sounds} aria-label={sounds ? "Ensordecer" : "Dejar de ensordecer"} title={sounds ? "Ensordecer" : "Dejar de ensordecer"}>
               <Icon name={sounds ? "headphones" : "headphonesOff"} />
             </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { botSay } from "./botListen";
 import { tuneOpus } from "./opus";
 import { supabase } from "./supabase";
 import { getState, retrackPresence, setState, subscribe, toast } from "./store";
@@ -378,6 +379,7 @@ export async function joinVoice(channelId: string) {
   chan = supabase.channel(`fogon-voice:${channelId}`, { config: { private: true, broadcast: { self: false }, presence: { key: meId() } } });
   chan
     .on("broadcast", { event: "sig" }, ({ payload }) => void onSignal(payload as Sig))
+    .on("broadcast", { event: "bot_say" }, ({ payload }) => botSay(payload as { bot_id: string; text: string }))
     .on("presence", { event: "sync" }, syncPeers)
     .subscribe(async (st) => {
       if (seq !== joinSeq) return;

@@ -1106,3 +1106,6 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
   .acct-field > div { min-width: 0; flex: 1; }
   .acct-field p { overflow-wrap: anywhere; }
 }
+.vc-caption { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.75); color: #fff; font-size: 14px; line-height: 1.3; text-align: center; animation: caption-in 0.15s ease-out; }
+@keyframes caption-in { from { opacity: 0; transform: translate(-50%, 4px); } }
+.vc-btn.listen-btn.on { background: #5865f2; color: #fff; }

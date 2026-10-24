@@ -51,6 +51,8 @@ export type State = {
   noiseMode: "ia" | "navegador" | "off"; // supresión de ruido del micrófono
   voicePing: number | null; // ms de ida y vuelta promedio en la llamada
   botVoice: Record<string, VoiceState>; // bots conectados a canales de voz (no tienen micrófono)
+  botsListen: boolean; // "los bots me escuchan": paso mi voz a texto para que contesten
+  voiceCaption: { botId: string; text: string; id: number } | null; // lo que está diciendo un bot
 };
 
 const initial: State = {
@@ -93,6 +95,8 @@ const initial: State = {
   noiseMode: "ia",
   voicePing: null,
   botVoice: {},
+  botsListen: false,
+  voiceCaption: null,
 };
 
 let state: State = initial;
@@ -217,6 +221,7 @@ async function onSession(session: Session | null) {
   void loadFriends();
   try {
     setState({ sounds: localStorage.getItem("fogon:sounds") !== "0", micMuted: localStorage.getItem("fogon:mic") === "0" });
+    setState({ botsListen: localStorage.getItem("fogon:botsListen") === "1" });
     const nm = localStorage.getItem("fogon:noise");
     if (nm === "ia" || nm === "navegador" || nm === "off") setState({ noiseMode: nm });
   } catch {}
@@ -547,6 +552,31 @@ export async function loadOlder(id: string) {
 }
 
 let readTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+/** Vuelve a pedir qué está sin leer (al volver a la pestaña, por si leíste en otro lado). */
+export async function refreshUnread() {
+  if (!state.me) return;
+  const { data, error } = await supabase.rpc("fogon_unread");
+  if (error) return;
+  const un: Record<string, Unread> = {};
+  for (const r of (data ?? []) as { channel_id: string; unread: boolean; mentions: number }[]) un[r.channel_id] = { unread: r.unread, mentions: Number(r.mentions) };
+  // lo que estoy mirando ahora, leído
+  const cur = state.place.channelId;
+  const viewing = cur && document.visibilityState === "visible" && state.channels[cur]?.kind !== "voice";
+  if (viewing) un[cur] = { unread: false, mentions: 0 };
+  setState({ unread: un });
+  if (viewing) markRead(cur);
+}
+if (typeof document !== "undefined") {
+  let last = 0;
+  const again = () => {
+    if (document.visibilityState !== "visible" || Date.now() - last < 3000) return;
+    last = Date.now();
+    void refreshUnread();
+  };
+  document.addEventListener("visibilitychange", again);
+  window.addEventListener("focus", again);
+}
+
 export function markRead(id: string) {
   if (state.unread[id]?.unread || state.unread[id]?.mentions) {
     setState((s) => ({ unread: { ...s.unread, [id]: { unread: false, mentions: 0 } } }));
@@ -1026,6 +1056,13 @@ export function setSounds(on: boolean) {
   void trackPresence();
 }
 
+export function setBotsListen(on: boolean) {
+  setState({ botsListen: on });
+  try {
+    localStorage.setItem("fogon:botsListen", on ? "1" : "0");
+  } catch {}
+}
+
 export function setMicMuted(on: boolean) {
   // desmutear el micrófono también saca el ensordecido, como en Discord
   setState(on ? { micMuted: true } : { micMuted: false, sounds: true });
@@ -1103,6 +1140,17 @@ function startRealtime() {
       void ensureProfiles([r.user_id]);
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
+    // leído en otro dispositivo: acá también deja de estar sin leer
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_read_states" }, (p) => {
+      const r = p.new as { user_id?: string; channel_id?: string; last_read_at?: string };
+      if (!r?.channel_id || r.user_id !== meId()) return;
+      const ch = state.channels[r.channel_id];
+      const u = state.unread[r.channel_id];
+      if (!u?.unread && !u?.mentions) return;
+      if (!ch?.last_message_at || !r.last_read_at || r.last_read_at >= ch.last_message_at) {
+        setState((s) => ({ unread: { ...s.unread, [r.channel_id!]: { unread: false, mentions: 0 } } }));
+      }
+    })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_friends" }, () => friendsSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_channel_overrides" }, () => reloadSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_bot_voice" }, () => void loadBotVoice())
