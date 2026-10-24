@@ -227,12 +227,15 @@ function AdminBadges({ p }: { p: Profile }) {
             );
           })}
           <p className="hint">«Pionero» se da sola a quien se sumó en el primer mes.</p>
-          {!p.is_bot && p.id !== getState().me?.id && <AdminBan p={p} />}
+          {!p.is_bot && getState().me?.id === OWNER_ID && p.id !== OWNER_ID && <AdminBan p={p} />}
         </div>
       )}
     </section>
   );
 }
+
+/** Dueño de Fogón: el único que puede banear cuentas. */
+const OWNER_ID = "e7809edc-8559-4df6-8d2b-1fffc7a27719";
 
 /** Ban permanente de la cuenta en toda la plataforma (solo admins de Fogón). */
 function AdminBan({ p }: { p: Profile }) {
