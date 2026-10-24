@@ -1489,3 +1489,14 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .mention-top time { color: var(--ink-3); font-size: 12px; }
 .mention-where { color: var(--accent); font-weight: 600; }
 .mention-body { color: var(--ink-2); font-size: 14px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* ---------- plantillas de servidor ---------- */
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; }
+.tpl-card { display: grid; gap: 3px; align-content: start; text-align: left; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--raise); color: var(--ink-2); cursor: pointer; font: inherit; min-height: 86px; }
+.tpl-card:hover { border-color: var(--accent); }
+.tpl-card.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--ink); }
+.tpl-card:disabled { opacity: .6; cursor: default; }
+.tpl-emoji { font-size: 22px; line-height: 1.1; }
+.tpl-card b { font-size: 14px; color: var(--ink-strong); }
+.tpl-desc { font-size: 12px; color: var(--ink-3); line-height: 1.35; }
+.tpl-apply { margin-top: 4px; font-size: 12px; font-weight: 700; color: var(--accent); }

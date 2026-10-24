@@ -873,11 +873,30 @@ export function signedUrl(path: string): Promise<void> {
 
 /* ---------- servidores y canales ---------- */
 
-export async function createServer(name: string) {
-  const { data, error } = await supabase.rpc("fogon_create_server", { p_name: name });
+export type ServerTemplate = { id: string; name: string; emoji: string; description: string; position: number };
+
+/** Plantillas que se pueden elegir al crear un servidor (o aplicar a uno que ya existe). */
+export async function loadTemplates(): Promise<ServerTemplate[]> {
+  const { data, error } = await supabase.from("fogon_server_templates").select("id,name,emoji,description,position").order("position");
+  if (error) throw error;
+  return (data ?? []) as ServerTemplate[];
+}
+
+export async function createServer(name: string, template?: string | null) {
+  const { data, error } = template
+    ? await supabase.rpc("fogon_create_server_from_template", { p_name: name, p_template: template })
+    : await supabase.rpc("fogon_create_server", { p_name: name });
   if (error) throw error;
   await loadAll();
   go({ kind: "server", serverId: data as string, channelId: null });
+}
+
+/** Agrega los canales y roles de una plantilla a un servidor que ya existe. */
+export async function applyTemplate(serverId: string, templateId: string) {
+  const { data, error } = await supabase.rpc("fogon_apply_template", { p_server: serverId, p_template: templateId });
+  if (error) throw error;
+  await loadAll();
+  return Number(data) || 0;
 }
 
 export async function inviteInfo(code: string) {

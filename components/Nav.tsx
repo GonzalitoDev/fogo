@@ -24,6 +24,7 @@ export type NavDialogs = {
   roles: (s: Server) => void;
   bans: (s: Server) => void;
   boost: (s: Server) => void;
+  templates: (s: Server) => void;
   newDm: () => void;
   profile: () => void;
   switcher: () => void;
@@ -61,6 +62,7 @@ function serverMenuItems(state: State, server: Server, dialogs: NavDialogs): Men
   return [
     ...(can(state, server.id, "create_invite") ? ([{ label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) }] as MenuItem[]) : []),
     { label: "Boostear servidor", icon: <BoostGem />, onClick: () => dialogs.boost(server) },
+    ...(canServer ? ([{ label: "Aplicar plantilla", icon: <Icon name="folder" />, onClick: () => dialogs.templates(server) }] as MenuItem[]) : []),
     { label: "Marcar todo como leído", icon: <Icon name="check" />, onClick: () => void markAllRead(server.id).then(() => toast("Listo, todo marcado como leído")).catch(fail) },
     ...((canServer || canRoles || can(state, server.id, "ban_members")
       ? [{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }]

@@ -13,6 +13,7 @@ import {
   InviteDialog,
   LeaveServerDialog,
   MentionsDialog,
+  TemplatesDialog,
   NewDmDialog,
   ProfileDialog,
   ServerSettingsDialog,
@@ -89,6 +90,7 @@ type Dialog =
   | { kind: "roles"; server: Server }
   | { kind: "bans"; server: Server }
   | { kind: "boost"; server: Server }
+  | { kind: "templates"; server: Server }
   | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" } }
   | { kind: "dm" }
   | { kind: "inbox" }
@@ -228,6 +230,7 @@ export default function Page() {
     roles: (server) => setDialog({ kind: "roles", server }),
     bans: (server) => setDialog({ kind: "bans", server }),
     boost: (server) => setDialog({ kind: "boost", server }),
+    templates: (server) => setDialog({ kind: "templates", server }),
     newDm: () => setDialog({ kind: "dm" }),
     inbox: () => setDialog({ kind: "inbox" }),
     profile: () => setState({ settings: { kind: "user", section: "account" } }),
@@ -305,6 +308,7 @@ export default function Page() {
       {dialog?.kind === "roles" && <RolesDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "bans" && <BansDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "boost" && <BoostDialog serverId={dialog.server.id} onClose={close} />}
+      {dialog?.kind === "templates" && <TemplatesDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
       {dialog?.kind === "inbox" && <MentionsDialog onClose={close} />}

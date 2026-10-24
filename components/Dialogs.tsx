@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { friendlyError, initials, slugChannel } from "@/lib/chat";
 import {
+  applyTemplate,
   createServer,
   deleteChannel,
   deleteServer,
@@ -28,8 +29,10 @@ import {
   presenceOf,
   removeProfileMedia,
   uploadProfileMedia,
+  loadTemplates,
   type MentionRow,
   type ProfilePatch,
+  type ServerTemplate,
 } from "@/lib/store";
 import { ProfileView } from "./Profile";
 import { ChannelPermissions } from "./Permissions";
@@ -60,6 +63,13 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [templates, setTemplates] = useState<ServerTemplate[] | null>(null);
+  const [tpl, setTpl] = useState<string | null>(null);
+  useEffect(() => {
+    void loadTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, []);
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setErr("");
@@ -87,15 +97,30 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
           style={{ display: "grid", gap: 16 }}
           onSubmit={(e) => {
             e.preventDefault();
-            if (name.trim()) void run(() => createServer(name.trim()));
+            if (name.trim()) void run(() => createServer(name.trim(), tpl));
           }}
         >
           <h2>Armá tu servidor</h2>
-          <p>Es el lugar donde vos y tus amigos charlan. Arranca con un canal #general y después sumás los que quieras.</p>
+          <p>Elegí una plantilla para arrancar con canales y roles listos, o empezá en blanco y armalo a tu gusto.</p>
           <label className="field">
             <span>Nombre del servidor</span>
             <input id="server-name" className="input" autoFocus maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
           </label>
+          <div className="tpl-grid" role="radiogroup" aria-label="Plantilla del servidor">
+            <button type="button" className={`tpl-card${tpl === null ? " on" : ""}`} aria-pressed={tpl === null} onClick={() => setTpl(null)}>
+              <span className="tpl-emoji">📄</span>
+              <b>En blanco</b>
+              <span className="tpl-desc">Solo un #general para armar todo vos.</span>
+            </button>
+            {templates?.map((t) => (
+              <button key={t.id} type="button" className={`tpl-card${tpl === t.id ? " on" : ""}`} aria-pressed={tpl === t.id} onClick={() => setTpl(t.id)}>
+                <span className="tpl-emoji">{t.emoji}</span>
+                <b>{t.name}</b>
+                <span className="tpl-desc">{t.description}</span>
+              </button>
+            ))}
+          </div>
+          {!templates && <p className="hint">Cargando plantillas…</p>}
           <Err text={err} />
           <div className="foot">
             <button type="button" className="btn ghost" onClick={onClose}>
@@ -890,6 +915,52 @@ export function MentionsDialog({ onClose }: { onClose: () => void }) {
           Marcar todo como leído
         </button>
         <button className="btn primary" onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+    </Modal>
+  );
+}
+export function TemplatesDialog({ server, onClose }: { server: Server; onClose: () => void }) {
+  const [templates, setTemplates] = useState<ServerTemplate[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    void loadTemplates()
+      .then(setTemplates)
+      .catch((e) => setErr(friendlyError(e)));
+  }, []);
+  const apply = async (id: string) => {
+    setBusy(id);
+    setErr("");
+    try {
+      const n = await applyTemplate(server.id, id);
+      toast(`Plantilla aplicada: ${n} ${n === 1 ? "cosa nueva" : "cosas nuevas"}`);
+      onClose();
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Modal label="Plantillas de servidor" onClose={onClose} wide>
+      <h2>Plantilla para {server.name}</h2>
+      <p className="hint">Se agregan los canales y roles de la plantilla. No se borra nada de lo que ya tenés.</p>
+      <Err text={err} />
+      <div className="tpl-grid">
+        {templates?.map((t) => (
+          <button key={t.id} type="button" className="tpl-card" disabled={!!busy} onClick={() => void apply(t.id)}>
+            <span className="tpl-emoji">{t.emoji}</span>
+            <b>{t.name}</b>
+            <span className="tpl-desc">{t.description}</span>
+            <span className="tpl-apply">{busy === t.id ? "Aplicando…" : "Aplicar"}</span>
+          </button>
+        ))}
+      </div>
+      {!templates && !err && <p className="hint">Cargando plantillas…</p>}
+      <div className="foot">
+        <button type="button" className="btn ghost" onClick={onClose}>
           Cerrar
         </button>
       </div>
