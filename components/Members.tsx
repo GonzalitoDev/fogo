@@ -5,7 +5,8 @@ import { can, fail, kickMember, nameColor, openDm, rolesOf, topPosition, useStor
 import type { Profile, Role, Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { MemberRolesDialog } from "./Roles";
-import { Avatar, Confirm, Menu, type MenuItem } from "./ui";
+import { Avatar, Confirm, type MenuItem } from "./ui";
+import { BadgeRow, ProfileCard } from "./Badges";
 
 export function MemberList({ server }: { server: Server }) {
   const state = useStore((s) => s);
@@ -61,13 +62,22 @@ export function MemberList({ server }: { server: Server }) {
                 <span className="nm" style={{ color: nameColor(state, server.id, p.id) }}>
                   {p.display_name}
                 </span>
+                <BadgeRow p={p} max={2} size={12} />
                 {p.id === server.owner_id && <span className="tag">dueño</span>}
               </button>
             );
           })}
         </div>
       ))}
-      {menu && <Menu at={menu.at} label={menu.p.display_name} onClose={() => setMenu(null)} items={items(menu.p)} />}
+      {menu && (
+        <ProfileCard
+          p={menu.p}
+          at={menu.at}
+          serverId={server.id}
+          onClose={() => setMenu(null)}
+          actions={items(menu.p).flatMap((it) => (it === "sep" || it.label.startsWith("Editá") ? [] : [{ label: it.label, onClick: it.onClick, primary: it.label.startsWith("Mandar") }]))}
+        />
+      )}
       {assign && <MemberRolesDialog server={server} member={assign} onClose={() => setAssign(null)} />}
       {kick && (
         <Confirm

@@ -1,5 +1,7 @@
 "use client";
 
+import { BadgeRow } from "./Badges";
+
 import { memo, useEffect, useRef, useState } from "react";
 import { groupReactions, MAX_LEN, stampLabel, timeShort } from "@/lib/chat";
 import { isJumbo, parse, render } from "@/lib/markdown";
@@ -168,6 +170,7 @@ function MessageView(p: Props) {
             <button className="author" style={{ ["--c" as string]: p.authorColor ?? "var(--ink)" }} onClick={(e) => p.author && p.onAuthor(p.author, { x: e.clientX, y: e.clientY })}>
               {p.author?.display_name ?? "…"}
             </button>
+            <BadgeRow p={p.author} />
             <time className="when" dateTime={m.created_at} title={new Date(m.created_at).toLocaleString("es-AR")}>
               {stampLabel(m.created_at)}
             </time>

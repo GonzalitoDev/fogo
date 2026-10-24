@@ -348,3 +348,34 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; }
   .nav-drawer { display: contents; }
   .drawer-scrim { display: none; }
 }
+
+/* ---------- insignias y tarjeta de perfil ---------- */
+.badge { display: inline-grid; place-items: center; border-radius: 6px; color: var(--b); background: color-mix(in srgb, var(--b) 16%, transparent); flex: none; }
+.badge-row { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
+.badge-more { font-size: 11px; color: var(--ink-3); font-weight: 700; }
+.meta .badge-row { margin: 0 2px; }
+.member .badge-row { margin-left: -2px; }
+.pcard { position: fixed; z-index: 50; width: 320px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; background: var(--side); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); animation: fade 0.12s ease-out; }
+.pcard-banner { height: 64px; background: linear-gradient(135deg, var(--c), color-mix(in srgb, var(--c) 55%, #000)); }
+.pcard-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 0 14px; margin-top: -34px; }
+.pcard-avatar .avatar { width: 72px; height: 72px; font-size: 26px; border: 5px solid var(--side); box-sizing: content-box; }
+.pcard-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; padding: 6px 8px; margin-bottom: 6px; background: var(--raise); border: 1px solid var(--line); border-radius: 10px; max-width: 200px; }
+.pcard-badge { position: relative; display: inline-flex; border-radius: 6px; outline: none; }
+.pcard-badge .tip { position: absolute; top: calc(100% + 8px); right: -6px; width: max-content; max-width: 220px; padding: 8px 10px; border-radius: 8px; background: var(--ink); color: var(--side); font-size: 12px; line-height: 1.35; display: none; z-index: 2; pointer-events: none; }
+.pcard-badge .tip b { display: block; font-size: 13px; }
+.pcard-badge:hover .tip, .pcard-badge:focus-visible .tip { display: block; }
+.pcard-body { padding: 8px 16px 16px; display: grid; gap: 4px; }
+.pcard-body h2 { font-family: var(--font-display); font-size: 20px; margin: 0; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.pcard-body section { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.pcard-body h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); display: flex; justify-content: space-between; align-items: center; }
+.pcard-body p { margin: 0; font-size: 14px; }
+.pcard-roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.pcard-role { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--raise); border: 1px solid var(--line); }
+.pcard-role::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--rc); }
+.pcard-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.pcard-actions .btn { flex: 1; }
+.link-btn { border: 0; background: none; color: var(--accent); font-weight: 700; font-size: 12px; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.badge-edit { display: grid; gap: 4px; }
+.badge-toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+.badge-toggle:hover { background: var(--hover); }
+.badge-toggle input { accent-color: var(--accent); }

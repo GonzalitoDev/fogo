@@ -3,6 +3,7 @@ export type Profile = {
   username: string;
   display_name: string;
   color: string;
+  created_at?: string;
 };
 
 export type Server = {

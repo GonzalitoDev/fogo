@@ -1,5 +1,7 @@
 "use client";
 
+import { BadgeRow } from "./Badges";
+
 import { useEffect, useState } from "react";
 import { friendlyError, slugChannel } from "@/lib/chat";
 import {
@@ -515,6 +517,9 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
           <div>
             <h2>{name || me.display_name}</h2>
             <span className="hint">@{me.username}</span>
+            <div style={{ marginTop: 4 }}>
+              <BadgeRow p={me} max={8} size={16} />
+            </div>
           </div>
         </div>
         <label className="field">

@@ -29,6 +29,8 @@ export type State = {
   place: Place;
   online: boolean;
   toast: { id: number; text: string; tone: "info" | "error" } | null;
+  badges: Record<string, string[]>; // userId -> insignias dadas a mano
+  isAdmin: boolean;
 };
 
 const initial: State = {
@@ -50,6 +52,8 @@ const initial: State = {
   place: { kind: "dm", channelId: null },
   online: true,
   toast: null,
+  badges: {},
+  isAdmin: false,
 };
 
 let state: State = initial;
@@ -160,7 +164,7 @@ async function onSession(session: Session | null) {
   stopRealtime();
   setState({ ...initial, session, ready: false, online: typeof navigator === "undefined" ? true : navigator.onLine });
   if (!session) return setState({ ready: true });
-  const { data: me, error } = await supabase.from("fogon_profiles").select("id,username,display_name,color").eq("id", session.user.id).maybeSingle();
+  const { data: me, error } = await supabase.from("fogon_profiles").select("id,username,display_name,color,created_at").eq("id", session.user.id).maybeSingle();
   if (error) {
     fail(error);
     return setState({ ready: true });
@@ -168,6 +172,7 @@ async function onSession(session: Session | null) {
   if (!me) return setState({ ready: true, needsProfile: true });
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
+  void loadBadges();
   startRealtime();
   setState({ ready: true });
   const p = placeFromHash();
@@ -187,7 +192,7 @@ export async function updateProfile(displayName: string, color: string) {
     .from("fogon_profiles")
     .update({ display_name: displayName.trim(), color })
     .eq("id", meId())
-    .select("id,username,display_name,color")
+    .select("id,username,display_name,color,created_at")
     .single();
   if (error) throw error;
   setState((s) => ({ me: data, profiles: { ...s.profiles, [data.id]: data } }));
@@ -206,8 +211,8 @@ export async function loadAll() {
   const [servers, channels, members, dms, unread, roles, memberRoles] = await Promise.all([
     supabase.from("fogon_servers").select("*"),
     supabase.from("fogon_channels").select("*"),
-    supabase.from("fogon_members").select("server_id,user_id,profile:fogon_profiles(id,username,display_name,color)"),
-    supabase.from("fogon_dm_participants").select("channel_id,user_id,profile:fogon_profiles(id,username,display_name,color)"),
+    supabase.from("fogon_members").select("server_id,user_id,profile:fogon_profiles(id,username,display_name,color,created_at)"),
+    supabase.from("fogon_dm_participants").select("channel_id,user_id,profile:fogon_profiles(id,username,display_name,color,created_at)"),
     supabase.rpc("fogon_unread"),
     supabase.from("fogon_roles").select("*"),
     supabase.from("fogon_member_roles").select("server_id,user_id,role_id"),
@@ -258,7 +263,7 @@ export async function loadRoles() {
 async function ensureProfiles(ids: string[]) {
   const missing = [...new Set(ids)].filter((id) => id && !state.profiles[id]);
   if (!missing.length) return;
-  const { data } = await supabase.from("fogon_profiles").select("id,username,display_name,color").in("id", missing);
+  const { data } = await supabase.from("fogon_profiles").select("id,username,display_name,color,created_at").in("id", missing);
   if (data?.length) setState((s) => ({ profiles: { ...s.profiles, ...Object.fromEntries(data.map((p) => [p.id, p])) } }));
 }
 
@@ -608,7 +613,7 @@ export async function openDm(userId: string) {
 export async function findUser(username: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("fogon_profiles")
-    .select("id,username,display_name,color")
+    .select("id,username,display_name,color,created_at")
     .eq("username", username.toLowerCase().replace(/^@/, ""))
     .maybeSingle();
   if (error) throw error;
@@ -788,6 +793,7 @@ function startRealtime() {
       setState((s) => ({ members: { ...s.members, [r.server_id]: [...(s.members[r.server_id] ?? []), r.user_id] } }));
       void ensureProfiles([r.user_id]);
     })
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_roles" }, () => rolesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_member_roles" }, () => rolesSoon())
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_servers" }, (p) => {
@@ -831,4 +837,38 @@ export function dmUnread(s: State): number {
   let n = 0;
   for (const c of Object.values(s.channels)) if (c.kind === "dm") n += s.unread[c.id]?.mentions ?? 0;
   return n;
+}
+
+/* ---------- insignias ---------- */
+
+export async function loadBadges() {
+  const [b, a] = await Promise.all([
+    supabase.from("fogon_badges").select("user_id,badge"),
+    supabase.from("fogon_admins").select("user_id").eq("user_id", meId()).maybeSingle(),
+  ]);
+  if (b.error) return console.warn(b.error);
+  const map: Record<string, string[]> = {};
+  for (const r of b.data as { user_id: string; badge: string }[]) (map[r.user_id] ??= []).push(r.badge);
+  setState({ badges: map, isAdmin: !!a.data });
+}
+
+let badgeTimer: ReturnType<typeof setTimeout> | undefined;
+const badgesSoon = () => {
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => void loadBadges(), 250);
+};
+
+export async function setBadge(userId: string, badge: string, on: boolean) {
+  const before = state.badges;
+  const cur = new Set(before[userId] ?? []);
+  if (on) cur.add(badge);
+  else cur.delete(badge);
+  setState({ badges: { ...before, [userId]: [...cur] } });
+  const { error } = on
+    ? await supabase.from("fogon_badges").insert({ user_id: userId, badge })
+    : await supabase.from("fogon_badges").delete().eq("user_id", userId).eq("badge", badge);
+  if (error && error.code !== "23505") {
+    setState({ badges: before });
+    fail(error);
+  }
 }
