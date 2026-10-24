@@ -10,9 +10,11 @@ import {
   presenceOf,
   rolesOf,
   sendMessage,
+  banAccount,
   setBadge,
   setState,
   toast,
+  unbanAccount,
   useStore,
   type State,
 } from "@/lib/store";
@@ -225,9 +227,77 @@ function AdminBadges({ p }: { p: Profile }) {
             );
           })}
           <p className="hint">«Pionero» se da sola a quien se sumó en el primer mes.</p>
+          {!p.is_bot && p.id !== getState().me?.id && <AdminBan p={p} />}
         </div>
       )}
     </section>
+  );
+}
+
+/** Ban permanente de la cuenta en toda la plataforma (solo admins de Fogón). */
+function AdminBan({ p }: { p: Profile }) {
+  const ban = useStore((s) => s.accountBans[p.id]);
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<void>, ok: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      toast(ok);
+      setAsking(false);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="admin-ban">
+      {ban ? (
+        <>
+          <span>
+            <span className="ban-on">⛔ Cuenta baneada de Fogón</span>
+            {ban.reason ? ` · ${ban.reason}` : ""}
+          </span>
+          <button className="btn" disabled={busy} onClick={() => void run(() => unbanAccount(p.id), `Le quitaste el ban a @${p.username}`)}>
+            Quitar ban
+          </button>
+        </>
+      ) : (
+        <button className="btn danger" disabled={busy} onClick={() => setAsking(true)}>
+          ⛔ Banear cuenta de Fogón
+        </button>
+      )}
+      {asking && (
+        <Modal label={`Banear a @${p.username}`} onClose={() => setAsking(false)}>
+          <form
+            style={{ display: "grid", gap: 14 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(() => banAccount(p.id, reason), `⛔ @${p.username} quedó baneado de Fogón`);
+            }}
+          >
+            <h2>Banear a @{p.username} de Fogón</h2>
+            <p>
+              Es un ban <b>permanente de toda la plataforma</b>: se le cierra la sesión, no puede volver a entrar, sale de todos los servidores y no puede escribir más. Sus mensajes viejos quedan. Lo podés quitar después desde acá.
+            </p>
+            <label className="field">
+              <span>Motivo (lo ve la persona)</span>
+              <textarea className="input" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej.: spam, acoso, cuentas falsas…" />
+            </label>
+            <div className="foot">
+              <button type="button" className="btn ghost" onClick={() => setAsking(false)}>
+                Cancelar
+              </button>
+              <button className="btn danger" disabled={busy}>
+                {busy ? "Baneando…" : "Banear para siempre"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
   );
 }
 

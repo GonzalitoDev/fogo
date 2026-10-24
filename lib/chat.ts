@@ -121,6 +121,7 @@ export function initials(name: string): string {
 
 export function friendlyError(e: unknown): string {
   const msg = typeof e === "object" && e && "message" in e ? String((e as { message: string }).message) : String(e);
+  if (/User is banned|user_banned/i.test(msg)) return "Esta cuenta de Fogón fue suspendida de forma permanente.";
   if (/Invalid login credentials/i.test(msg)) return "El email o la contraseña no coinciden.";
   if (/User already registered/i.test(msg)) return "Ya hay una cuenta con ese email. Probá iniciar sesión.";
   if (/Password should be at least/i.test(msg)) return "La contraseña tiene que tener al menos 6 caracteres.";

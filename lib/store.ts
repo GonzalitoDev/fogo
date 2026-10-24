@@ -16,6 +16,8 @@ export type State = {
   session: Session | null;
   me: Profile | null;
   needsProfile: boolean;
+  suspended: { reason: string } | null; // mi cuenta está baneada de Fogón
+  accountBans: Record<string, { reason: string; created_at: string }>; // admins: cuentas baneadas
   servers: Record<string, Server>;
   channels: Record<string, Channel>;
   members: Record<string, string[]>; // serverId -> userIds
@@ -66,6 +68,8 @@ const initial: State = {
   session: null,
   me: null,
   needsProfile: false,
+  suspended: null,
+  accountBans: {},
   servers: {},
   channels: {},
   members: {},
@@ -216,7 +220,8 @@ export async function boot() {
 
 async function onSession(session: Session | null) {
   stopRealtime();
-  setState({ ...initial, session, ready: false, online: typeof navigator === "undefined" ? true : navigator.onLine });
+  // el aviso de cuenta suspendida queda hasta que alguien inicie sesión de nuevo
+  setState({ ...initial, suspended: session ? null : state.suspended, session, ready: false, online: typeof navigator === "undefined" ? true : navigator.onLine });
   if (!session) return setState({ ready: true });
   const { data: me, error } = await supabase.from("fogon_profiles").select(`${PCOLS}`).eq("id", session.user.id).maybeSingle();
   if (error) {
@@ -224,6 +229,8 @@ async function onSession(session: Session | null) {
     return setState({ ready: true });
   }
   if (!me) return setState({ ready: true, needsProfile: true });
+  const { data: ban } = await supabase.from("fogon_account_bans").select("reason").eq("user_id", me.id).maybeSingle();
+  if (ban) return suspend(ban.reason ?? "");
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
   void loadBadges();
@@ -1244,6 +1251,11 @@ function startRealtime() {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_boosts" }, () => boostsSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_account_bans" }, (p) => {
+      const r = (p.new ?? {}) as { user_id?: string; reason?: string };
+      if (p.eventType === "INSERT" && r.user_id === state.me?.id) return void suspend(r.reason ?? "");
+      if (state.isAdmin) void loadAccountBans();
+    })
     // leído en otro dispositivo: acá también deja de estar sin leer
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_read_states" }, (p) => {
       const r = p.new as { user_id?: string; channel_id?: string; last_read_at?: string };
@@ -1312,6 +1324,36 @@ export function dmUnread(s: State): number {
   return n;
 }
 
+/* ---------- ban de cuenta (toda la plataforma) ---------- */
+
+/** Mi cuenta fue baneada: se corta todo y se muestra el aviso. */
+async function suspend(reason: string) {
+  stopRealtime();
+  setState({ ...initial, ready: true, session: null, suspended: { reason } });
+  await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+  setState({ suspended: { reason }, ready: true });
+}
+
+export async function loadAccountBans() {
+  const { data, error } = await supabase.from("fogon_account_bans").select("user_id,reason,created_at");
+  if (error) return console.warn(error);
+  const map: State["accountBans"] = {};
+  for (const r of data as { user_id: string; reason: string; created_at: string }[]) map[r.user_id] = { reason: r.reason, created_at: r.created_at };
+  setState({ accountBans: map });
+}
+
+export async function banAccount(userId: string, reason: string) {
+  const { error } = await supabase.rpc("fogon_account_ban", { p_user: userId, p_reason: reason });
+  if (error) throw error;
+  await loadAccountBans();
+}
+
+export async function unbanAccount(userId: string) {
+  const { error } = await supabase.rpc("fogon_account_unban", { p_user: userId });
+  if (error) throw error;
+  await loadAccountBans();
+}
+
 /* ---------- boosts de servidor ---------- */
 
 export async function loadBoosts() {
@@ -1366,6 +1408,7 @@ export async function loadBadges() {
   const map: Record<string, string[]> = {};
   for (const r of b.data as { user_id: string; badge: string }[]) (map[r.user_id] ??= []).push(r.badge);
   setState({ badges: map, isAdmin: !!a.data });
+  if (a.data) void loadAccountBans();
 }
 
 let badgeTimer: ReturnType<typeof setTimeout> | undefined;

@@ -58,6 +58,27 @@ function LoadScreen() {
   );
 }
 
+/** Cuenta baneada de Fogón (ban permanente del equipo). */
+function SuspendedScreen({ reason }: { reason: string }) {
+  return (
+    <main className="load-screen" role="alert">
+      <div className="load-inner suspended">
+        <Ember className="load-ember off" />
+        <h1>Tu cuenta fue suspendida</h1>
+        <p>El equipo de Fogón suspendió esta cuenta de forma permanente. Ya no podés iniciar sesión ni usar Fogón con ella.</p>
+        {reason && (
+          <p className="susp-reason">
+            <b>Motivo:</b> {reason}
+          </p>
+        )}
+        <button className="btn" onClick={() => setState({ suspended: null })}>
+          Volver al inicio
+        </button>
+      </div>
+    </main>
+  );
+}
+
 type Dialog =
   | { kind: "create" }
   | { kind: "invite"; server: Server }
@@ -76,6 +97,7 @@ export default function Page() {
   const ready = useStore((s) => s.ready);
   const session = useStore((s) => s.session);
   const needsProfile = useStore((s) => s.needsProfile);
+  const suspended = useStore((s) => s.suspended);
   const me = useStore((s) => s.me);
   const place = useStore((s) => s.place);
   const servers = useStore((s) => s.servers);
@@ -171,6 +193,7 @@ export default function Page() {
         </div>
       </main>
     );
+  if (suspended) return <SuspendedScreen reason={suspended.reason} />;
   if (!ready) return <LoadScreen />;
   if (!session) return <AuthScreen />;
   if (needsProfile || !me) return <ProfileSetup />;

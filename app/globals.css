@@ -1317,3 +1317,12 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .load-tip { margin: 8px 0 0; font-size: 14px; line-height: 1.45; color: var(--ink-3); }
 .load-tip b { color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
 @media (prefers-reduced-motion: reduce) { .load-ember { animation: none; } }
+
+/* cuenta suspendida */
+.load-inner.suspended h1 { margin: 6px 0 0; font-size: 22px; color: var(--ink-strong); }
+.load-inner.suspended p { margin: 0; color: var(--ink-2); line-height: 1.45; }
+.load-ember.off { color: var(--ink-3); animation: none; filter: grayscale(1); opacity: 0.6; }
+.susp-reason { padding: 8px 12px; border-radius: 8px; background: var(--hover); font-size: 14px; }
+.admin-ban { display: grid; gap: 6px; margin-top: 8px; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--danger) 12%, transparent); font-size: 13.5px; }
+.admin-ban .btn { height: 28px; padding: 0 10px; font-size: 13px; justify-self: start; }
+.admin-ban .ban-on { color: var(--danger); font-weight: 700; }
