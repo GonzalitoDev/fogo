@@ -2,17 +2,24 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { initials } from "@/lib/chat";
-import type { Profile } from "@/lib/types";
+import type { Presence, Profile } from "@/lib/types";
+import { mediaUrl } from "@/lib/store";
 
 export const COLORS = ["#e07a3f", "#d4a72c", "#4f9d69", "#2f9c95", "#3f7fd1", "#7a63d6", "#c4569b", "#d0504a", "#6b7b77"];
 
-export function Avatar({ p, size = "md" }: { p?: Profile | null; size?: "md" | "sm" | "xs" }) {
+export function Avatar({ p, size = "md", status, src: override }: { p?: Profile | null; size?: "md" | "sm" | "xs" | "lg" | "xl"; status?: Presence; src?: string | null }) {
+  const src = override !== undefined ? override : mediaUrl(p?.avatar_path);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [src]);
   return (
-    <span className={`avatar ${size === "md" ? "" : size}`} style={{ ["--c" as string]: p?.color ?? "#6b7b77" }} aria-hidden="true">
-      {initials(p?.display_name ?? "?")}
+    <span className={`avatar ${size === "md" ? "" : size}${src && !broken ? " has-img" : ""}`} style={{ ["--c" as string]: p?.color ?? "#6b7b77" }} aria-hidden="true">
+      {src && !broken ? <img src={src} alt="" draggable={false} onError={() => setBroken(true)} /> : initials(p?.display_name ?? "?")}
+      {status && <span className={`status-dot s-${status}`} title={STATUS_LABEL[status]} />}
     </span>
   );
 }
+
+export const STATUS_LABEL: Record<Presence, string> = { online: "En línea", idle: "Ausente", dnd: "No molestar", offline: "Desconectado" };
 
 export function useEscape(fn: () => void, active = true) {
   const ref = useRef(fn);

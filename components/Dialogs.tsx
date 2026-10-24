@@ -1,7 +1,5 @@
 "use client";
 
-import { BadgeRow } from "./Badges";
-
 import { useEffect, useState } from "react";
 import { friendlyError, slugChannel } from "@/lib/chat";
 import {
@@ -20,7 +18,13 @@ import {
   toast,
   updateProfile,
   useStore,
+  getState,
+  presenceOf,
+  removeProfileMedia,
+  uploadProfileMedia,
+  type ProfilePatch,
 } from "@/lib/store";
+import { ProfileView } from "./Profile";
 import type { Channel, Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Avatar, COLORS, Confirm, Modal, copyText } from "./ui";
@@ -489,81 +493,194 @@ export function NewDmDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+const THEMES: [string, string][] = [
+  ["#3b1d5c", "#c4569b"],
+  ["#0f3b4c", "#2f9c95"],
+  ["#4a1f0f", "#e07a3f"],
+  ["#14213d", "#3f7fd1"],
+  ["#2b2b2b", "#6b7b77"],
+  ["#3d0e1b", "#d0504a"],
+];
+
 export function ProfileDialog({ onClose }: { onClose: () => void }) {
   const me = useStore((s) => s.me)!;
-  const [name, setName] = useState(me.display_name);
-  const [color, setColor] = useState(me.color);
+  const [d, setD] = useState({
+    display_name: me.display_name,
+    pronouns: me.pronouns ?? "",
+    color: me.color,
+    bio: me.bio ?? "",
+    custom_status: me.custom_status ?? "",
+    banner_color: me.banner_color ?? null,
+    theme_top: me.theme_top ?? null,
+    theme_bottom: me.theme_bottom ?? null,
+  });
+  const set = (patch: Partial<typeof d>) => setD((x) => ({ ...x, ...patch }));
+  // fotos nuevas (todavía sin subir): File + URL local para la vista previa; null = quitar
+  const [avatar, setAvatar] = useState<{ file: File; url: string } | null | undefined>(undefined);
+  const [banner, setBanner] = useState<{ file: File; url: string } | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [notif, setNotif] = useState(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
+  const themed = !!(d.theme_top && d.theme_bottom);
+
+  const pick = (kind: "avatar" | "banner") => {
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/png,image/jpeg,image/webp,image/gif";
+    inp.onchange = () => {
+      const f = inp.files?.[0];
+      if (!f) return;
+      if (f.size > 8 * 1024 * 1024) return setErr("La imagen pesa más de 8 MB.");
+      const v = { file: f, url: URL.createObjectURL(f) };
+      if (kind === "avatar") setAvatar(v);
+      else setBanner(v);
+    };
+    inp.click();
+  };
+
+  const draft = { ...me, ...d };
+  const save = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const patch: ProfilePatch = { ...d, pronouns: d.pronouns.trim(), bio: d.bio.trim(), custom_status: d.custom_status.trim() };
+      const old: (string | null | undefined)[] = [];
+      if (avatar !== undefined) {
+        patch.avatar_path = avatar ? await uploadProfileMedia("avatar", avatar.file) : null;
+        old.push(me.avatar_path);
+      }
+      if (banner !== undefined) {
+        patch.banner_path = banner ? await uploadProfileMedia("banner", banner.file) : null;
+        old.push(me.banner_path);
+      }
+      await updateProfile(patch);
+      old.forEach((x) => removeProfileMedia(x));
+      toast("Perfil guardado");
+      onClose();
+    } catch (e) {
+      setErr(friendlyError(e));
+      setBusy(false);
+    }
+  };
+
   return (
-    <Modal label="Tu perfil" onClose={onClose}>
-      <form
-        style={{ display: "grid", gap: 16 }}
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          try {
-            await updateProfile(name, color);
-            onClose();
-          } catch (e) {
-            setErr(friendlyError(e));
-            setBusy(false);
-          }
-        }}
-      >
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <Avatar p={{ ...me, display_name: name || me.display_name, color }} />
-          <div>
-            <h2>{name || me.display_name}</h2>
-            <span className="hint">@{me.username}</span>
-            <div style={{ marginTop: 4 }}>
-              <BadgeRow p={me} max={8} size={16} />
+    <Modal label="Editar perfil" onClose={onClose} wide>
+      <div className="pe">
+        <div className="pe-form">
+          <h2>Perfil</h2>
+          <label className="field">
+            <span>Nombre visible</span>
+            <input id="profile-name" className="input" maxLength={40} value={d.display_name} onChange={(e) => set({ display_name: e.target.value })} />
+          </label>
+          <label className="field">
+            <span>Pronombres</span>
+            <input className="input" maxLength={40} placeholder="él/ella/elle" value={d.pronouns} onChange={(e) => set({ pronouns: e.target.value })} />
+          </label>
+          <div className="field">
+            <span>Foto de perfil</span>
+            <div className="pe-row">
+              <button type="button" className="btn primary" onClick={() => pick("avatar")}>
+                <Icon name="camera" /> Cambiar foto
+              </button>
+              {(avatar || (avatar === undefined && me.avatar_path)) && (
+                <button type="button" className="btn ghost" onClick={() => setAvatar(null)}>
+                  Quitar
+                </button>
+              )}
+            </div>
+            <div className="colors" role="radiogroup" aria-label="Color (cuando no hay foto)">
+              {COLORS.map((c) => (
+                <button type="button" key={c} role="radio" aria-checked={c === d.color} aria-label={c} className="color" style={{ ["--c" as string]: c }} onClick={() => set({ color: c })} />
+              ))}
             </div>
           </div>
-        </div>
-        <label className="field">
-          <span>Nombre visible</span>
-          <input id="profile-name" className="input" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <div className="field">
-          <span>Color</span>
-          <div className="colors" role="radiogroup" aria-label="Color del avatar">
-            {COLORS.map((c) => (
-              <button type="button" key={c} role="radio" aria-checked={c === color} aria-label={c} className="color" style={{ ["--c" as string]: c }} onClick={() => setColor(c)} />
-            ))}
+          <div className="field">
+            <span>Banner</span>
+            <div className="pe-row">
+              <button type="button" className="btn" onClick={() => pick("banner")}>
+                <Icon name="image" /> Subir imagen
+              </button>
+              {(banner || (banner === undefined && me.banner_path)) && (
+                <button type="button" className="btn ghost" onClick={() => setBanner(null)}>
+                  Quitar
+                </button>
+              )}
+              <label className="pe-color" title="Color del banner">
+                <input type="color" value={d.banner_color ?? d.color} onChange={(e) => set({ banner_color: e.target.value })} aria-label="Color del banner" />
+                Color
+              </label>
+            </div>
+          </div>
+          <div className="field">
+            <span>Tema del perfil</span>
+            <div className="pe-row">
+              <button type="button" className={"pe-theme none" + (!themed ? " on" : "")} onClick={() => set({ theme_top: null, theme_bottom: null })} aria-label="Sin tema" title="Sin tema" />
+              {THEMES.map(([a, b]) => (
+                <button
+                  type="button"
+                  key={a}
+                  className={"pe-theme" + (d.theme_top === a && d.theme_bottom === b ? " on" : "")}
+                  style={{ background: `linear-gradient(${a}, ${b})` }}
+                  onClick={() => set({ theme_top: a, theme_bottom: b })}
+                  aria-label={`Tema ${a} a ${b}`}
+                />
+              ))}
+              <label className="pe-color" title="Elegir colores">
+                <input type="color" value={d.theme_top ?? "#3b1d5c"} onChange={(e) => set({ theme_top: e.target.value, theme_bottom: d.theme_bottom ?? "#c4569b" })} aria-label="Color de arriba" />
+                <input type="color" value={d.theme_bottom ?? "#c4569b"} onChange={(e) => set({ theme_bottom: e.target.value, theme_top: d.theme_top ?? "#3b1d5c" })} aria-label="Color de abajo" />
+              </label>
+            </div>
+          </div>
+          <label className="field">
+            <span>Estado personalizado</span>
+            <input className="input" maxLength={128} placeholder="🔥 armando el fogón" value={d.custom_status} onChange={(e) => set({ custom_status: e.target.value })} />
+          </label>
+          <label className="field">
+            <span>
+              Sobre mí <small className="hint">{190 - d.bio.length}</small>
+            </span>
+            <textarea className="input" rows={4} maxLength={190} placeholder="Contá algo de vos. Los links se pueden tocar." value={d.bio} onChange={(e) => set({ bio: e.target.value })} />
+          </label>
+          <div className="field">
+            <span>Avisos de menciones y mensajes directos</span>
+            {notif === "granted" ? (
+              <span className="hint" style={{ fontWeight: 400 }}>
+                Activados en este navegador.
+              </span>
+            ) : notif === "denied" ? (
+              <span className="hint" style={{ fontWeight: 400 }}>
+                El navegador los bloqueó. Habilitalos desde la configuración del sitio.
+              </span>
+            ) : notif === "unsupported" ? (
+              <span className="hint" style={{ fontWeight: 400 }}>
+                Este navegador no tiene notificaciones.
+              </span>
+            ) : (
+              <button type="button" className="btn" style={{ justifySelf: "start" }} onClick={async () => setNotif(await Notification.requestPermission())}>
+                <Icon name="at" /> Activar avisos
+              </button>
+            )}
           </div>
         </div>
-        <div className="field">
-          <span>Avisos de menciones y mensajes directos</span>
-          {notif === "granted" ? (
-            <span className="hint" style={{ fontWeight: 400 }}>
-              Activados en este navegador.
-            </span>
-          ) : notif === "denied" ? (
-            <span className="hint" style={{ fontWeight: 400 }}>
-              El navegador los bloqueó. Habilitalos desde la configuración del sitio.
-            </span>
-          ) : notif === "unsupported" ? (
-            <span className="hint" style={{ fontWeight: 400 }}>
-              Este navegador no tiene notificaciones.
-            </span>
-          ) : (
-            <button type="button" className="btn" style={{ justifySelf: "start" }} onClick={async () => setNotif(await Notification.requestPermission())}>
-              <Icon name="at" /> Activar avisos
-            </button>
-          )}
+        <div className="pe-preview">
+          <h2>Vista previa</h2>
+          <ProfileView
+            p={draft}
+            variant="preview"
+            presence={presenceOf(getState(), me.id)}
+            local={{ avatar: avatar === undefined ? undefined : avatar?.url ?? null, banner: banner === undefined ? undefined : banner?.url ?? null }}
+          />
         </div>
-        <Err text={err} />
-        <div className="foot">
-          <button type="button" className="btn ghost" onClick={onClose}>
-            Cancelar
-          </button>
-          <button className="btn primary" disabled={busy || !name.trim()}>
-            Guardar
-          </button>
-        </div>
-      </form>
+      </div>
+      <Err text={err} />
+      <div className="foot">
+        <button type="button" className="btn ghost" onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="btn primary" disabled={busy || !d.display_name.trim()} onClick={save}>
+          {busy ? "Guardando…" : "Guardar cambios"}
+        </button>
+      </div>
     </Modal>
   );
 }

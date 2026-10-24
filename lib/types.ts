@@ -4,7 +4,19 @@ export type Profile = {
   display_name: string;
   color: string;
   created_at?: string;
+  bio?: string;
+  pronouns?: string;
+  banner_color?: string | null;
+  theme_top?: string | null;
+  theme_bottom?: string | null;
+  avatar_path?: string | null;
+  banner_path?: string | null;
+  status?: Status;
+  custom_status?: string;
 };
+
+export type Status = "online" | "idle" | "dnd" | "invisible";
+export type Presence = "online" | "idle" | "dnd" | "offline";
 
 export type Server = {
   id: string;

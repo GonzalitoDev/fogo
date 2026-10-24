@@ -21,6 +21,7 @@ import { MemberList } from "@/components/Members";
 import { DmSidebar, Rail, ServerSidebar, type NavDialogs } from "@/components/Nav";
 import { QuickSwitcher } from "@/components/Switcher";
 import { RolesDialog } from "@/components/Roles";
+import { FullProfile } from "@/components/Profile";
 
 type Dialog =
   | { kind: "create" }
@@ -43,6 +44,7 @@ export default function Page() {
   const servers = useStore((s) => s.servers);
   const channel = useStore((s) => (s.place.channelId ? s.channels[s.place.channelId] : undefined));
   const toast = useStore((s) => s.toast);
+  const editingProfile = useStore((s) => s.editingProfile);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [membersOpen, setMembersOpen] = useState(true);
@@ -207,7 +209,15 @@ export default function Page() {
       {dialog?.kind === "roles" && <RolesDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
-      {dialog?.kind === "profile" && <ProfileDialog onClose={close} />}
+      {(dialog?.kind === "profile" || editingProfile) && (
+        <ProfileDialog
+          onClose={() => {
+            close();
+            setState({ editingProfile: false });
+          }}
+        />
+      )}
+      <FullProfile />
       {dialog?.kind === "switcher" && <QuickSwitcher onClose={close} />}
 
       {toast && (

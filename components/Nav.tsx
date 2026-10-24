@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { channelTree } from "@/lib/chat";
-import { can, dmUnread, go, serverUnread, signOut, useStore, type State } from "@/lib/store";
+import { can, dmUnread, go, presenceOf, serverUnread, setState, setStatus, signOut, useStore, type State } from "@/lib/store";
+import type { Status } from "@/lib/types";
 import type { Channel, Server } from "@/lib/types";
 import { Ember, Icon } from "./Icon";
-import { Avatar, Menu, type MenuItem } from "./ui";
+import { Avatar, Menu, STATUS_LABEL, type MenuItem } from "./ui";
 
 export type NavDialogs = {
   createServer: () => void;
@@ -77,21 +78,59 @@ export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void
   );
 }
 
+const STATUS_HINT: Record<Status, string> = {
+  online: "",
+  idle: "",
+  dnd: "No te llegan avisos",
+  invisible: "Aparecés desconectado, pero podés usar todo",
+};
+
 function MePanel({ dialogs }: { dialogs: NavDialogs }) {
   const me = useStore((s) => s.me);
+  const st = useStore((s) => s);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const pres = me ? presenceOf(st, me.id) : "offline";
+  const statuses: Status[] = ["online", "idle", "dnd", "invisible"];
   return (
     <div className="me-panel">
-      <Avatar p={me} size="sm" />
-      <div className="who">
-        <b>{me?.display_name}</b>
-        <span>@{me?.username}</span>
-      </div>
+      <button
+        className="me-who"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenu({ x: r.left, y: r.top - 8 });
+        }}
+        aria-label="Tu estado y perfil"
+        title="Tu estado y perfil"
+      >
+        <Avatar p={me} size="sm" status={pres} />
+        <span className="who">
+          <b>{me?.display_name}</b>
+          <span>{me?.custom_status || STATUS_LABEL[pres]}</span>
+        </span>
+      </button>
       <button className="icon-btn" onClick={dialogs.profile} aria-label="Editar perfil" title="Editar perfil">
         <Icon name="gear" />
       </button>
       <button className="icon-btn" onClick={() => void signOut()} aria-label="Cerrar sesión" title="Cerrar sesión">
         <Icon name="logout" />
       </button>
+      {menu && me && (
+        <Menu
+          at={{ x: menu.x, y: Math.max(8, menu.y - 260) }}
+          label="Tu estado"
+          onClose={() => setMenu(null)}
+          items={[
+            ...statuses.map((x) => ({
+              label: (x === "invisible" ? "Invisible" : STATUS_LABEL[x]) + ((me.status ?? "online") === x ? " ✓" : "") + (STATUS_HINT[x] ? ` · ${STATUS_HINT[x]}` : ""),
+              icon: <span className={`status-dot inline s-${x === "invisible" ? "offline" : x}`} />,
+              onClick: () => void setStatus(x),
+            })),
+            "sep" as const,
+            { label: "Ver mi perfil", icon: <Icon name="users" />, onClick: () => setState({ fullProfile: me.id }) },
+            { label: "Editar perfil", icon: <Icon name="edit" />, onClick: dialogs.profile },
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -214,6 +253,7 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
   const profiles = useStore((s) => s.profiles);
   const unread = useStore((s) => s.unread);
   const place = useStore((s) => s.place);
+  const state = useStore((s) => s);
   const dms = useMemo(
     () =>
       Object.values(channels)
@@ -236,7 +276,7 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
           const u = unread[c.id];
           return (
             <div key={c.id} className={`chan${active ? " active" : ""}${u?.unread && !active ? " unread" : ""}`} style={{ height: 44 }}>
-              <Avatar p={peer} size="sm" />
+              <Avatar p={peer} size="sm" status={peer ? presenceOf(state, peer.id) : undefined} />
               <button
                 className="label"
                 onClick={() => {

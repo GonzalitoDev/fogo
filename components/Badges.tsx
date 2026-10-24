@@ -1,10 +1,8 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
-import { BADGES, badgesFor, GRANTABLE, type BadgeId } from "@/lib/badges";
-import { rolesOf, setBadge, useStore } from "@/lib/store";
+import { BADGES, badgesFor, type BadgeId } from "@/lib/badges";
+import { useStore } from "@/lib/store";
 import type { Profile } from "@/lib/types";
-import { Avatar, useEscape } from "./ui";
 
 /* ---------- íconos (16x16, color propio de cada insignia) ---------- */
 
@@ -49,116 +47,3 @@ export function BadgeRow({ p, max = 3, size = 14 }: { p?: Profile | null; max?: 
   );
 }
 
-/* ---------- tarjeta de perfil ---------- */
-
-export type CardAction = { label: string; onClick: () => void; primary?: boolean };
-
-export function ProfileCard({ p, at, serverId, actions, onClose }: { p: Profile; at: { x: number; y: number }; serverId?: string; actions: CardAction[]; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: at.x, top: at.y, ready: false });
-  const list = useBadges(p);
-  const isAdmin = useStore((s) => s.isAdmin);
-  const grantedRaw = useStore((s) => s.badges[p.id]);
-  const granted = grantedRaw ?? [];
-  const st = useStore((s) => s);
-  const roles = serverId ? rolesOf(st, serverId, p.id) : [];
-  const [editing, setEditing] = useState(false);
-  useEscape(onClose);
-  useLayoutEffect(() => {
-    const el = ref.current!;
-    const left = Math.min(Math.max(8, at.x + 12), window.innerWidth - el.offsetWidth - 8);
-    const top = Math.min(Math.max(8, at.y - 40), window.innerHeight - el.offsetHeight - 8);
-    setPos({ left: Math.max(8, left), top: Math.max(8, top), ready: true });
-  }, [at.x, at.y, editing]);
-  const since = p.created_at ? new Date(p.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" }) : null;
-
-  return (
-    <>
-      <div className="backdrop" onPointerDown={onClose} />
-      <div ref={ref} className="pcard" role="dialog" aria-label={`Perfil de ${p.display_name}`} style={{ left: pos.left, top: pos.top, visibility: pos.ready ? "visible" : "hidden", ["--c" as string]: p.color }}>
-        <div className="pcard-banner" />
-        <div className="pcard-head">
-          <span className="pcard-avatar">
-            <Avatar p={p} />
-          </span>
-          {list.length > 0 && (
-            <div className="pcard-badges" aria-label="Insignias">
-              {list.map((b) => (
-                <span key={b} className="pcard-badge" tabIndex={0}>
-                  <BadgeIcon id={b} size={18} />
-                  <span className="tip" role="tooltip">
-                    <b>{BADGES[b].label}</b>
-                    {BADGES[b].desc}
-                  </span>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="pcard-body">
-          <h2>{p.display_name}</h2>
-          <span className="hint">@{p.username}</span>
-          {since && (
-            <section>
-              <h3>Miembro de Fogón desde</h3>
-              <p>{since}</p>
-            </section>
-          )}
-          {roles.length > 0 && (
-            <section>
-              <h3>Roles</h3>
-              <div className="pcard-roles">
-                {roles.map((r) => (
-                  <span key={r.id} className="pcard-role" style={{ ["--rc" as string]: r.color || "var(--ink-3)" }}>
-                    {r.name}
-                  </span>
-                ))}
-              </div>
-            </section>
-          )}
-          {isAdmin && (
-            <section>
-              <h3>
-                Insignias (admin)
-                <button className="link-btn" onClick={() => setEditing(!editing)}>
-                  {editing ? "Listo" : "Editar"}
-                </button>
-              </h3>
-              {editing && (
-                <div className="badge-edit">
-                  {GRANTABLE.map((b) => {
-                    const on = granted.includes(b);
-                    return (
-                      <label key={b} className={"badge-toggle" + (on ? " on" : "")}>
-                        <input type="checkbox" checked={on} onChange={(e) => void setBadge(p.id, b, e.target.checked)} />
-                        <BadgeIcon id={b} size={14} />
-                        {BADGES[b].label}
-                      </label>
-                    );
-                  })}
-                  <p className="hint">«Pionero» se da sola a quien se sumó en el primer mes.</p>
-                </div>
-              )}
-            </section>
-          )}
-          {actions.length > 0 && (
-            <div className="pcard-actions">
-              {actions.map((a) => (
-                <button
-                  key={a.label}
-                  className={"btn " + (a.primary ? "primary" : "ghost")}
-                  onClick={() => {
-                    onClose();
-                    a.onClick();
-                  }}
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}

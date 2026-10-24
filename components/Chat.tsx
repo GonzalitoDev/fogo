@@ -1,6 +1,6 @@
 "use client";
 
-import { ProfileCard } from "./Badges";
+import { ProfilePopout } from "./Profile";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildRows, channelTree, dayLabel } from "@/lib/chat";
@@ -217,15 +217,12 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         </div>
       )}
       {authorMenu && (
-        <ProfileCard
+        <ProfilePopout
           p={authorMenu.p}
           at={authorMenu.at}
           serverId={channel.server_id ?? undefined}
           onClose={() => setAuthorMenu(null)}
-          actions={[
-            ...(authorMenu.p.id !== me?.id ? [{ label: "Mensaje directo", primary: true, onClick: () => void openDm(authorMenu.p.id).catch(fail) }] : []),
-            { label: `Mencionar`, onClick: () => composer.current?.mention(authorMenu.p.username) },
-          ]}
+          actions={[{ label: "Mencionar", onClick: () => composer.current?.mention(authorMenu.p.username) }]}
         />
       )}
     </section>

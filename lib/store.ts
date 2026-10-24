@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
+import type { Presence, Status } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
@@ -31,6 +32,10 @@ export type State = {
   toast: { id: number; text: string; tone: "info" | "error" } | null;
   badges: Record<string, string[]>; // userId -> insignias dadas a mano
   isAdmin: boolean;
+  presence: Record<string, Presence>; // userId -> conectado ahora (Realtime Presence)
+  joined: Record<string, Record<string, string>>; // serverId -> userId -> fecha en que entró
+  fullProfile: string | null; // userId del perfil completo abierto
+  editingProfile: boolean;
 };
 
 const initial: State = {
@@ -54,6 +59,10 @@ const initial: State = {
   toast: null,
   badges: {},
   isAdmin: false,
+  presence: {},
+  joined: {},
+  fullProfile: null,
+  editingProfile: false,
 };
 
 let state: State = initial;
@@ -81,6 +90,7 @@ export function fail(e: unknown) {
   toast(friendlyError(e), "error");
 }
 
+export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status";
 const meId = () => state.session?.user.id ?? "";
 
 /* ---------- lugar actual (en el hash para que sobreviva a recargar) ---------- */
@@ -164,7 +174,7 @@ async function onSession(session: Session | null) {
   stopRealtime();
   setState({ ...initial, session, ready: false, online: typeof navigator === "undefined" ? true : navigator.onLine });
   if (!session) return setState({ ready: true });
-  const { data: me, error } = await supabase.from("fogon_profiles").select("id,username,display_name,color,created_at").eq("id", session.user.id).maybeSingle();
+  const { data: me, error } = await supabase.from("fogon_profiles").select(`${PCOLS}`).eq("id", session.user.id).maybeSingle();
   if (error) {
     fail(error);
     return setState({ ready: true });
@@ -174,6 +184,7 @@ async function onSession(session: Session | null) {
   await loadAll();
   void loadBadges();
   startRealtime();
+  startPresence();
   setState({ ready: true });
   const p = placeFromHash();
   if (p.kind === "server" && !state.servers[p.serverId]) go({ kind: "dm", channelId: null });
@@ -187,15 +198,131 @@ export async function createProfile(username: string, displayName: string, color
   await onSession(state.session);
 }
 
-export async function updateProfile(displayName: string, color: string) {
-  const { data, error } = await supabase
-    .from("fogon_profiles")
-    .update({ display_name: displayName.trim(), color })
-    .eq("id", meId())
-    .select("id,username,display_name,color,created_at")
-    .single();
+export type ProfilePatch = Partial<Pick<Profile, "display_name" | "color" | "bio" | "pronouns" | "banner_color" | "theme_top" | "theme_bottom" | "avatar_path" | "banner_path" | "status" | "custom_status">>;
+
+export async function updateProfile(patch: ProfilePatch) {
+  const clean: ProfilePatch = { ...patch };
+  if (clean.display_name !== undefined) clean.display_name = clean.display_name.trim();
+  const { data, error } = await supabase.from("fogon_profiles").update(clean).eq("id", meId()).select(PCOLS).single();
   if (error) throw error;
-  setState((s) => ({ me: data, profiles: { ...s.profiles, [data.id]: data } }));
+  setState((s) => ({ me: data as Profile, profiles: { ...s.profiles, [data.id]: data as Profile } }));
+  if (patch.status !== undefined) void trackPresence();
+}
+
+/* ---------- fotos de perfil y banners (bucket público) ---------- */
+
+export const MEDIA_BUCKET = "fogon-profiles";
+export const mediaUrl = (path?: string | null) => (path ? supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl : null);
+
+/** Achica la imagen en el navegador (los GIF se suben tal cual para no perder la animación). */
+async function shrink(file: File, maxW: number, maxH: number): Promise<Blob> {
+  if (file.type === "image/gif") {
+    if (file.size > 5 * 1024 * 1024) throw new Error("El GIF pesa más de 5 MB.");
+    return file;
+  }
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, maxW / bmp.width, maxH / bmp.height);
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * scale);
+  c.height = Math.round(bmp.height * scale);
+  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+  return await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("No se pudo leer la imagen."))), "image/webp", 0.88));
+}
+
+/** Sube la foto o el banner y devuelve la ruta (no guarda el perfil). */
+export async function uploadProfileMedia(kind: "avatar" | "banner", file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("Tiene que ser una imagen.");
+  const blob = kind === "avatar" ? await shrink(file, 512, 512) : await shrink(file, 1200, 480);
+  const ext = blob.type === "image/gif" ? "gif" : "webp";
+  const path = `${meId()}/${kind}-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from(MEDIA_BUCKET).upload(path, blob, { contentType: blob.type, cacheControl: "31536000" });
+  if (error) throw error;
+  return path;
+}
+
+export function removeProfileMedia(path?: string | null) {
+  if (path) void supabase.storage.from(MEDIA_BUCKET).remove([path]);
+}
+
+/* ---------- presencia: quién está conectado ---------- */
+
+let pres: ReturnType<typeof supabase.channel> | null = null;
+let away = false;
+
+function myPresence(): Presence | null {
+  const st = state.me?.status ?? "online";
+  if (st === "invisible") return null;
+  if (st === "online" && away) return "idle";
+  return st;
+}
+
+async function trackPresence() {
+  if (!pres) return;
+  const p = myPresence();
+  if (p) await pres.track({ status: p });
+  else await pres.untrack();
+}
+
+function startPresence() {
+  stopPresence();
+  const id = meId();
+  if (!id) return;
+  pres = supabase.channel("fogon-presence", { config: { presence: { key: id } } });
+  pres
+    .on("presence", { event: "sync" }, () => {
+      const raw = pres!.presenceState() as Record<string, { status?: Presence }[]>;
+      const map: Record<string, Presence> = {};
+      const rank = { online: 3, dnd: 2, idle: 1, offline: 0 } as const;
+      for (const [uid, metas] of Object.entries(raw)) {
+        // varias pestañas: gana la más "activa"
+        let best: Presence = "offline";
+        for (const m of metas) if (m.status && rank[m.status] > rank[best]) best = m.status;
+        if (best !== "offline") map[uid] = best;
+      }
+      setState({ presence: map });
+    })
+    .subscribe((st) => {
+      if (st === "SUBSCRIBED") void trackPresence();
+    });
+}
+
+function stopPresence() {
+  if (pres) void supabase.removeChannel(pres);
+  pres = null;
+}
+
+if (typeof document !== "undefined") {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  document.addEventListener("visibilitychange", () => {
+    clearTimeout(timer);
+    if (document.visibilityState === "hidden") {
+      // 5 minutos en otra pestaña = ausente, como en Discord
+      timer = setTimeout(() => {
+        away = true;
+        void trackPresence();
+      }, 5 * 60_000);
+    } else if (away) {
+      away = false;
+      void trackPresence();
+    }
+  });
+}
+
+/** Estado que se muestra de alguien (yo me veo como elegí, aunque esté invisible). */
+export function presenceOf(s: State, userId: string): Presence {
+  if (userId === s.me?.id) {
+    const st = s.me.status ?? "online";
+    return st === "invisible" ? "offline" : st === "online" && away ? "idle" : st;
+  }
+  return s.presence[userId] ?? "offline";
+}
+
+export async function setStatus(status: Status) {
+  try {
+    await updateProfile({ status });
+  } catch (e) {
+    fail(e);
+  }
 }
 
 export async function signOut() {
@@ -204,15 +331,15 @@ export async function signOut() {
 
 /* ---------- carga inicial ---------- */
 
-type MemberRow = { server_id: string; user_id: string; profile: Profile | null };
+type MemberRow = { server_id: string; user_id: string; joined_at?: string; profile: Profile | null };
 type DmRow = { channel_id: string; user_id: string; profile: Profile | null };
 
 export async function loadAll() {
   const [servers, channels, members, dms, unread, roles, memberRoles] = await Promise.all([
     supabase.from("fogon_servers").select("*"),
     supabase.from("fogon_channels").select("*"),
-    supabase.from("fogon_members").select("server_id,user_id,profile:fogon_profiles(id,username,display_name,color,created_at)"),
-    supabase.from("fogon_dm_participants").select("channel_id,user_id,profile:fogon_profiles(id,username,display_name,color,created_at)"),
+    supabase.from("fogon_members").select(`server_id,user_id,joined_at,profile:fogon_profiles(${PCOLS})`),
+    supabase.from("fogon_dm_participants").select(`channel_id,user_id,profile:fogon_profiles(${PCOLS})`),
     supabase.rpc("fogon_unread"),
     supabase.from("fogon_roles").select("*"),
     supabase.from("fogon_member_roles").select("server_id,user_id,role_id"),
@@ -221,8 +348,10 @@ export async function loadAll() {
   if (err) return fail(err);
   const profiles: Record<string, Profile> = { ...state.profiles };
   const mem: Record<string, string[]> = {};
+  const joined: Record<string, Record<string, string>> = {};
   for (const r of members.data as unknown as MemberRow[]) {
     (mem[r.server_id] ??= []).push(r.user_id);
+    if (r.joined_at) (joined[r.server_id] ??= {})[r.user_id] = r.joined_at;
     if (r.profile) profiles[r.profile.id] = r.profile;
   }
   const peers: Record<string, string> = {};
@@ -236,6 +365,7 @@ export async function loadAll() {
     servers: Object.fromEntries((servers.data as Server[]).map((x) => [x.id, x])),
     channels: Object.fromEntries((channels.data as Channel[]).map((x) => [x.id, x])),
     members: mem,
+    joined,
     dmPeers: peers,
     profiles,
     unread: un,
@@ -263,7 +393,7 @@ export async function loadRoles() {
 async function ensureProfiles(ids: string[]) {
   const missing = [...new Set(ids)].filter((id) => id && !state.profiles[id]);
   if (!missing.length) return;
-  const { data } = await supabase.from("fogon_profiles").select("id,username,display_name,color,created_at").in("id", missing);
+  const { data } = await supabase.from("fogon_profiles").select(`${PCOLS}`).in("id", missing);
   if (data?.length) setState((s) => ({ profiles: { ...s.profiles, ...Object.fromEntries(data.map((p) => [p.id, p])) } }));
 }
 
@@ -608,12 +738,13 @@ export async function openDm(userId: string) {
   const id = data as string;
   if (!state.channels[id]) await loadAll();
   go({ kind: "dm", channelId: id });
+  return id;
 }
 
 export async function findUser(username: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("fogon_profiles")
-    .select("id,username,display_name,color,created_at")
+    .select(`${PCOLS}`)
     .eq("username", username.toLowerCase().replace(/^@/, ""))
     .maybeSingle();
   if (error) throw error;
@@ -706,6 +837,7 @@ const rolesSoon = () => {
 function stopRealtime() {
   if (rt) void supabase.removeChannel(rt);
   rt = null;
+  stopPresence();
 }
 
 function onMessageInsert(m: Message) {
@@ -730,7 +862,7 @@ function onMessageInsert(m: Message) {
 
 function notify(m: Message) {
   try {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible") return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible" || state.me?.status === "dnd") return;
     const who = state.profiles[m.author_id]?.display_name ?? "Alguien";
     new Notification(who, { body: m.content.slice(0, 140) || "Mandó una imagen", tag: m.channel_id });
   } catch {}
@@ -794,6 +926,11 @@ function startRealtime() {
       void ensureProfiles([r.user_id]);
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_profiles" }, (p) => {
+      const np = p.new as Profile;
+      if (!state.profiles[np.id]) return;
+      setState((s) => ({ profiles: { ...s.profiles, [np.id]: { ...s.profiles[np.id], ...np } }, ...(np.id === s.me?.id ? { me: { ...s.me!, ...np } } : {}) }));
+    })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_roles" }, () => rolesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_member_roles" }, () => rolesSoon())
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_servers" }, (p) => {

@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { can, fail, kickMember, nameColor, openDm, rolesOf, topPosition, useStore } from "@/lib/store";
+import { can, fail, kickMember, nameColor, openDm, presenceOf, rolesOf, topPosition, useStore } from "@/lib/store";
 import type { Profile, Role, Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { MemberRolesDialog } from "./Roles";
 import { Avatar, Confirm, type MenuItem } from "./ui";
-import { BadgeRow, ProfileCard } from "./Badges";
+import { BadgeRow } from "./Badges";
+import { ProfilePopout } from "./Profile";
 
 export function MemberList({ server }: { server: Server }) {
   const state = useStore((s) => s);
@@ -19,9 +20,14 @@ export function MemberList({ server }: { server: Server }) {
   const groups = useMemo(() => {
     const ids = state.members[server.id] ?? [];
     const byRole = new Map<string, { role: Role | null; people: Profile[] }>();
+    const offline: Profile[] = [];
     for (const id of ids) {
       const p = state.profiles[id];
       if (!p) continue;
+      if (presenceOf(state, id) === "offline") {
+        offline.push(p);
+        continue;
+      }
       const hoisted = rolesOf(state, server.id, id).find((r) => r.hoist) ?? null;
       const key = hoisted?.id ?? "_";
       if (!byRole.has(key)) byRole.set(key, { role: hoisted, people: [] });
@@ -29,7 +35,9 @@ export function MemberList({ server }: { server: Server }) {
     }
     const list = [...byRole.values()];
     for (const g of list) g.people.sort((a, b) => Number(b.id === server.owner_id) - Number(a.id === server.owner_id) || a.display_name.localeCompare(b.display_name));
-    return list.sort((a, b) => (b.role?.position ?? -1) - (a.role?.position ?? -1));
+    list.sort((a, b) => (b.role?.position ?? -1) - (a.role?.position ?? -1));
+    offline.sort((a, b) => a.display_name.localeCompare(b.display_name));
+    return { online: list, offline };
   }, [state, server.id, server.owner_id]);
 
   const total = (state.members[server.id] ?? []).length;
@@ -49,33 +57,42 @@ export function MemberList({ server }: { server: Server }) {
 
   return (
     <aside className="members" aria-label="Miembros">
-      {groups.map((g) => (
-        <div key={g.role?.id ?? "_"} className="member-group">
+      {[...groups.online.map((g) => ({ key: g.role?.id ?? "_", title: g.role ? g.role.name : "En línea", people: g.people, off: false })), ...(groups.offline.length ? [{ key: "off", title: "Desconectados", people: groups.offline, off: true }] : [])].map((g) => (
+        <div key={g.key} className={"member-group" + (g.off ? " is-offline" : "")}>
           <h3>
-            {g.role ? g.role.name : total === g.people.length ? "Miembros" : "Sin rol"}, {g.people.length}
+            {g.title} — {g.people.length}
           </h3>
           {g.people.map((p) => {
             const roles = rolesOf(state, server.id, p.id);
             return (
               <button key={p.id} className="member" onClick={(e) => setMenu({ p, at: { x: e.clientX, y: e.clientY } })} title={roles.map((r) => r.name).join(", ") || undefined}>
-                <Avatar p={p} size="sm" />
-                <span className="nm" style={{ color: nameColor(state, server.id, p.id) }}>
-                  {p.display_name}
+                <Avatar p={p} size="sm" status={presenceOf(state, p.id)} />
+                <span className="member-text">
+                  <span className="member-line">
+                    <span className="nm" style={{ color: nameColor(state, server.id, p.id) }}>
+                      {p.display_name}
+                    </span>
+                    {p.id === server.owner_id && (
+                      <span className="crown" title="Dueño del servidor" aria-label="Dueño del servidor">
+                        👑
+                      </span>
+                    )}
+                    <BadgeRow p={p} max={2} size={12} />
+                  </span>
+                  {p.custom_status && <span className="member-status">{p.custom_status}</span>}
                 </span>
-                <BadgeRow p={p} max={2} size={12} />
-                {p.id === server.owner_id && <span className="tag">dueño</span>}
               </button>
             );
           })}
         </div>
       ))}
       {menu && (
-        <ProfileCard
+        <ProfilePopout
           p={menu.p}
           at={menu.at}
           serverId={server.id}
           onClose={() => setMenu(null)}
-          actions={items(menu.p).flatMap((it) => (it === "sep" || it.label.startsWith("Editá") ? [] : [{ label: it.label, onClick: it.onClick, primary: it.label.startsWith("Mandar") }]))}
+          actions={items(menu.p).flatMap((it) => (it === "sep" || it.label.startsWith("Editá") || it.label.startsWith("Mandar") ? [] : [{ label: it.label, onClick: it.onClick, danger: it.danger }]))}
         />
       )}
       {assign && <MemberRolesDialog server={server} member={assign} onClose={() => setAssign(null)} />}
