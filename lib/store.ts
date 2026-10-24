@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
-import { BUCKET, supabase } from "./supabase";
+import { BUCKET, SUPABASE_KEY, SUPABASE_URL, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
 import type { Ban, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
@@ -527,7 +527,7 @@ export async function openChannel(id: string) {
   } else if (!(id in state.lastRead)) {
     setState((s) => ({ lastRead: { ...s.lastRead, [id]: null } }));
   }
-  markRead(id);
+  markRead(id, true);
   const cur = state.messages[id];
   if (cur?.loaded || cur?.loading) return;
   setChannelMessages(id, { loading: true });
@@ -600,13 +600,48 @@ if (typeof document !== "undefined") {
   window.addEventListener("focus", again);
 }
 
-export function markRead(id: string) {
+const pendingReads = new Set<string>();
+
+/**
+ * Marca el canal como leído. Al abrirlo va derecho al servidor (así no se pierde si recargás
+ * enseguida); si llegan varios mensajes seguidos mientras lo mirás, espera 400 ms y manda uno solo.
+ */
+export function markRead(id: string, immediate = false) {
   if (state.unread[id]?.unread || state.unread[id]?.mentions) {
     setState((s) => ({ unread: { ...s.unread, [id]: { unread: false, mentions: 0 } } }));
   }
+  closeNotification(id);
   clearTimeout(readTimers[id]);
-  readTimers[id] = setTimeout(() => void supabase.rpc("fogon_mark_read", { p_channel: id }), 600);
+  pendingReads.add(id);
+  const send = (attempt = 0) => {
+    delete readTimers[id];
+    void supabase.rpc("fogon_mark_read", { p_channel: id }).then(({ error }) => {
+      if (!error) return pendingReads.delete(id);
+      // se cortó la red: reintento una vez si seguís en ese canal
+      if (attempt < 1 && state.place.channelId === id) readTimers[id] = setTimeout(() => send(attempt + 1), 2000);
+      else pendingReads.delete(id);
+    });
+  };
+  if (immediate) send();
+  else readTimers[id] = setTimeout(() => send(), 400);
 }
+
+/** Si recargás o cerrás la pestaña, los leídos que quedaron en cola se mandan igual. */
+function flushReads() {
+  const token = state.session?.access_token;
+  for (const id of pendingReads) {
+    try {
+      void fetch(`${SUPABASE_URL}/rest/v1/rpc/fogon_mark_read`, {
+        method: "POST",
+        keepalive: true,
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token ?? SUPABASE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_channel: id }),
+      });
+    } catch {}
+  }
+  pendingReads.clear();
+}
+if (typeof window !== "undefined") window.addEventListener("pagehide", flushReads);
 
 /* ---------- enviar / editar / borrar ---------- */
 
@@ -1115,12 +1150,35 @@ export function setMicMuted(on: boolean) {
   void trackPresence();
 }
 
+const notifs = new Map<string, Notification>();
+
+function closeNotification(channelId: string) {
+  const n = notifs.get(channelId);
+  if (!n) return;
+  notifs.delete(channelId);
+  try {
+    n.close();
+  } catch {}
+}
+
 function notify(m: Message) {
   if (!state.sounds) return;
   try {
     if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible" || state.me?.status === "dnd") return;
     const who = state.profiles[m.author_id]?.display_name ?? "Alguien";
-    new Notification(who, { body: m.content.slice(0, 140) || "Mandó una imagen", tag: m.channel_id });
+    closeNotification(m.channel_id);
+    const n = new Notification(who, { body: m.content.slice(0, 140) || "Mandó una imagen", tag: `fogon:${m.channel_id}` });
+    notifs.set(m.channel_id, n);
+    // tocás la notificación y te lleva al DM (o al canal)
+    n.onclick = () => {
+      try {
+        window.focus();
+      } catch {}
+      const ch = state.channels[m.channel_id];
+      if (ch) go(ch.server_id ? { kind: "server", serverId: ch.server_id, channelId: ch.id } : { kind: "dm", channelId: ch.id });
+      closeNotification(m.channel_id);
+    };
+    n.onclose = () => notifs.delete(m.channel_id);
   } catch {}
 }
 

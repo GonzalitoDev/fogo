@@ -7,6 +7,8 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://xfwolaurpeofysnymql
 const key = process.env.NEXT_PUBLIC_SUPABASE_KEY || "sb_publishable_3VvBUD5Bdu3Uaq59fJ99MQ_XDCtujUU";
 
 export const configured = !!url && !!key;
+export const SUPABASE_URL = url;
+export const SUPABASE_KEY = key;
 
 export const supabase = createClient(url, key, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
