@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { configured } from "@/lib/supabase";
-import { boot, can, getState, setState, useStore } from "@/lib/store";
+import { boot, can, claimReferral, getState, setState, useStore } from "@/lib/store";
 import type { Channel, Server } from "@/lib/types";
 import { AuthScreen, ProfileSetup } from "@/components/Auth";
 import { ChatPane } from "@/components/Chat";
@@ -63,7 +63,15 @@ export default function Page() {
 
   // invitación en la URL: se guarda hasta que haya sesión y perfil
   useEffect(() => {
-    const code = new URLSearchParams(location.search).get("invite");
+    const params = new URLSearchParams(location.search);
+    const code = params.get("invite");
+    const ref = params.get("ref");
+    if (ref) {
+      // quién te invitó: se guarda hasta que tengas cuenta (sobrevive al registro)
+      try {
+        localStorage.setItem("fogon:ref", ref);
+      } catch {}
+    }
     if (code) {
       try {
         sessionStorage.setItem("fogon:invite", code);
@@ -79,6 +87,7 @@ export default function Page() {
       sessionStorage.removeItem("fogon:invite");
     } catch {}
     if (code) setDialog({ kind: "accept", code });
+    void claimReferral();
   }, [ready, me]);
 
   useEffect(() => {

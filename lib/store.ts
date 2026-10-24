@@ -730,6 +730,26 @@ export async function joinServer(code: string) {
   go({ kind: "server", serverId: data as string, channelId: null });
 }
 
+/** Si llegaste con el link de alguien (?ref=usuario), se lo anotamos a esa persona. */
+export async function claimReferral() {
+  let ref: string | null = null;
+  try {
+    ref = localStorage.getItem("fogon:ref");
+  } catch {}
+  if (!ref || !state.me) return;
+  const { error } = await supabase.rpc("fogon_claim_referral", { p_ref: ref });
+  if (!error) {
+    try {
+      localStorage.removeItem("fogon:ref");
+    } catch {}
+  }
+}
+
+export async function myReferrals(): Promise<number> {
+  const { data } = await supabase.rpc("fogon_my_referrals");
+  return Number(data ?? 0);
+}
+
 export async function resetInvite(serverId: string) {
   const { data, error } = await supabase.rpc("fogon_reset_invite", { p_server: serverId });
   if (error) throw error;

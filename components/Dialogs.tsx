@@ -9,6 +9,7 @@ import {
   findUser,
   inviteInfo,
   joinServer,
+  myReferrals,
   leaveServer,
   openDm,
   renameServer,
@@ -125,20 +126,30 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function inviteLink(code: string) {
-  return `${location.origin}${location.pathname}?invite=${code}`;
+export function inviteLink(code: string, ref?: string) {
+  return `${location.origin}${location.pathname}?invite=${code}${ref ? `&ref=${encodeURIComponent(ref)}` : ""}`;
 }
 
 export function InviteDialog({ server, onClose }: { server: Server; onClose: () => void }) {
   const me = useStore((s) => s.me);
   const live = useStore((s) => s.servers[server.id]) ?? server;
   const canReset = useStore((s) => can(s, server.id, "manage_server"));
-  const link = inviteLink(live.invite_code);
+  const link = inviteLink(live.invite_code, me?.username);
   const [copied, setCopied] = useState(false);
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    void myReferrals().then(setCount);
+  }, []);
   return (
     <Modal label={`Invitar a ${live.name}`} onClose={onClose}>
       <h2>Invitá gente a {live.name}</h2>
       <p>Mandales este link. Quien lo abra y tenga cuenta en Fogón entra al servidor.</p>
+      {count !== null && (
+        <p className="hint invite-ref">
+          🏅 El link lleva tu nombre: {count === 0 ? "todavía no trajiste a nadie" : `ya trajiste a ${count} ${count === 1 ? "persona" : "personas"}`}.
+          {count < 3 ? ` Con ${3 - count} más te ganás la insignia Embajador.` : " ¡Sos Embajador del Fogón!"}
+        </p>
+      )}
       <div className="copy-row">
         <input id="invite-link" className="input" readOnly value={link} onFocus={(e) => e.target.select()} aria-label="Link de invitación" />
         <button
