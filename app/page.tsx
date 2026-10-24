@@ -29,6 +29,35 @@ import { BoostDialog } from "@/components/Boost";
 import { VoicePane } from "@/components/Voice";
 import { applyAppTheme } from "@/lib/premium";
 
+const TIPS = [
+  "Escribí !play y el nombre de un tema en un canal de voz para poner música.",
+  "Radio Fogón pasa música las 24 horas en el canal «📻 Radio 24/7».",
+  "Con Ctrl + K abrís el buscador rápido de canales y charlas.",
+  "Con Fogón Premium podés boostear tus servidores favoritos 💎",
+  "Los avisos oficiales llegan siempre desde la cuenta Fogón con la etiqueta OFICIAL.",
+  "Arrastrá una imagen al chat para mandarla.",
+];
+
+/** Pantalla de carga: la llama titila mientras se conecta, con un consejo al azar. */
+function LoadScreen() {
+  const [tip, setTip] = useState(TIPS[0]);
+  // al azar recién en el navegador (si no, no coincide con la página pre-generada)
+  useEffect(() => setTip(TIPS[Math.floor(Math.random() * TIPS.length)]), []);
+  return (
+    <main className="load-screen" aria-busy="true" aria-live="polite">
+      <div className="load-inner">
+        <Ember className="load-ember" />
+        <p className="load-title">Prendiendo el fogón…</p>
+        <p className="load-tip">
+          <b>¿Sabías que…?</b>
+          <br />
+          {tip}
+        </p>
+      </div>
+    </main>
+  );
+}
+
 type Dialog =
   | { kind: "create" }
   | { kind: "invite"; server: Server }
@@ -142,12 +171,7 @@ export default function Page() {
         </div>
       </main>
     );
-  if (!ready)
-    return (
-      <main className="auth" aria-busy="true">
-        <Ember className="ember-load" />
-      </main>
-    );
+  if (!ready) return <LoadScreen />;
   if (!session) return <AuthScreen />;
   if (needsProfile || !me) return <ProfileSetup />;
 
