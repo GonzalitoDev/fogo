@@ -1329,3 +1329,18 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .admin-premium b.on.staff { color: #f2803a; }
 .staff-list { flex-direction: column; align-items: flex-start; gap: 2px; }
 .staff-names { color: var(--ink-2); font-size: 13px; }
+
+/* cuentas guardadas y recuperar contraseña */
+.saved-accs { display: grid; gap: 6px; margin-bottom: 14px; }
+.saved-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--ink-3); }
+.saved-acc { display: flex; align-items: center; gap: 4px; }
+.saved-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line, rgba(255,255,255,.08)); border-radius: 10px; background: var(--hover); color: var(--ink); text-align: left; cursor: pointer; }
+.saved-pick:hover { background: var(--active); }
+.saved-names { display: grid; min-width: 0; }
+.saved-names b, .saved-names small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-names small { color: var(--ink-3); font-size: 12px; }
+.saved-go { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent); flex: none; }
+.saved-or { text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+.forgot { justify-self: start; font-size: 13px; font-weight: 500; margin-top: 2px; }
+.email-typo { font-size: 13px; font-weight: 400; color: #f0b232; }
+.acc-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); display: inline-block; }

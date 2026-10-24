@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { configured } from "@/lib/supabase";
 import { boot, can, claimReferral, getState, setState, useStore } from "@/lib/store";
 import type { Channel, Server } from "@/lib/types";
-import { AuthScreen, ProfileSetup } from "@/components/Auth";
+import { AuthScreen, NewPasswordScreen, ProfileSetup } from "@/components/Auth";
 import { ChatPane } from "@/components/Chat";
 import {
   ChannelDialog,
@@ -98,6 +98,7 @@ export default function Page() {
   const session = useStore((s) => s.session);
   const needsProfile = useStore((s) => s.needsProfile);
   const suspended = useStore((s) => s.suspended);
+  const recovery = useStore((s) => s.recovery);
   const me = useStore((s) => s.me);
   const place = useStore((s) => s.place);
   const servers = useStore((s) => s.servers);
@@ -196,6 +197,7 @@ export default function Page() {
   if (suspended) return <SuspendedScreen reason={suspended.reason} />;
   if (!ready) return <LoadScreen />;
   if (!session) return <AuthScreen />;
+  if (recovery) return <NewPasswordScreen />;
   if (needsProfile || !me) return <ProfileSetup />;
 
   const dialogs: NavDialogs = {

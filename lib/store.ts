@@ -2,7 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
-import { BUCKET, SUPABASE_KEY, SUPABASE_URL, supabase } from "./supabase";
+import { BUCKET, RECOVERY_LINK, SUPABASE_KEY, SUPABASE_URL, supabase } from "./supabase";
+import { forgetSession, rememberProfile, rememberSession } from "./accounts";
 import { friendlyError, upsertMessage } from "./chat";
 import type { Ban, Boost, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
@@ -16,6 +17,7 @@ export type State = {
   session: Session | null;
   me: Profile | null;
   needsProfile: boolean;
+  recovery: boolean; // entró con el link de "olvidé mi contraseña": tiene que elegir una nueva
   suspended: { reason: string } | null; // mi cuenta está baneada de Fogón
   accountBans: Record<string, { reason: string; created_at: string }>; // admins: cuentas baneadas
   servers: Record<string, Server>;
@@ -70,6 +72,7 @@ const initial: State = {
   me: null,
   needsProfile: false,
   suspended: null,
+  recovery: false,
   accountBans: {},
   servers: {},
   channels: {},
@@ -204,8 +207,12 @@ export async function boot() {
     );
   }
   const { data } = await supabase.auth.getSession();
+  if (data.session) rememberSession(data.session);
   await onSession(data.session);
-  supabase.auth.onAuthStateChange((_ev, session) => {
+  if (RECOVERY_LINK && data.session) setState({ recovery: true });
+  supabase.auth.onAuthStateChange((ev, session) => {
+    if (session) rememberSession(session);
+    if (ev === "PASSWORD_RECOVERY") setState({ recovery: true });
     if ((session?.user.id ?? null) !== (state.session?.user.id ?? null)) void onSession(session);
     else setState({ session });
   });
@@ -233,6 +240,7 @@ async function onSession(session: Session | null) {
   if (!me) return setState({ ready: true, needsProfile: true });
   const { data: ban } = await supabase.from("fogon_account_bans").select("reason").eq("user_id", me.id).maybeSingle();
   if (ban) return suspend(ban.reason ?? "");
+  rememberProfile(me);
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
   void loadBadges();
@@ -403,6 +411,8 @@ export async function setStatus(status: Status) {
 }
 
 export async function signOut() {
+  // la cuenta queda guardada en este dispositivo, pero sin sesión
+  if (state.me) forgetSession(state.me.id);
   await supabase.auth.signOut();
 }
 
@@ -1331,6 +1341,7 @@ export function dmUnread(s: State): number {
 
 /** Mi cuenta fue baneada: se corta todo y se muestra el aviso. */
 async function suspend(reason: string) {
+  if (state.session) forgetSession(state.session.user.id);
   stopRealtime();
   setState({ ...initial, ready: true, session: null, suspended: { reason } });
   await supabase.auth.signOut({ scope: "local" }).catch(() => {});

@@ -10,6 +10,9 @@ export const configured = !!url && !!key;
 export const SUPABASE_URL = url;
 export const SUPABASE_KEY = key;
 
+// link de "olvidé mi contraseña": hay que mirarlo antes de que Supabase limpie la URL
+export const RECOVERY_LINK = typeof window !== "undefined" && /type=recovery/.test(window.location.hash);
+
 export const supabase = createClient(url, key, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   realtime: { params: { eventsPerSecond: 20 } },

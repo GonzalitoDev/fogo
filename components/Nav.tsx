@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { channelTree } from "@/lib/chat";
-import { can, channelAllows, dmUnread, go, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, useStore, type State } from "@/lib/store";
+import { can, channelAllows, dmUnread, go, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, toast, useStore, type State } from "@/lib/store";
 import type { Status } from "@/lib/types";
 import type { Channel, Server } from "@/lib/types";
 import { Ember, Icon } from "./Icon";
@@ -11,6 +11,7 @@ import { Avatar, Menu, STATUS_LABEL, type MenuItem } from "./ui";
 import { MicButton, VoiceConnected, VoiceRow } from "./Voice";
 import { joinVoice } from "@/lib/voice";
 import { BotTag } from "./Permissions";
+import { addAnotherAccount, savedAccounts, switchTo } from "@/lib/accounts";
 import { BoostGem } from "./Boost";
 import { boostLevel } from "@/lib/boost";
 
@@ -135,7 +136,7 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
       </button>
       {menu && me && (
         <Menu
-          at={{ x: menu.x, y: Math.max(8, menu.y - 260) }}
+          at={{ x: menu.x, y: Math.max(8, menu.y - 360) }}
           label="Tu estado"
           onClose={() => setMenu(null)}
           items={[
@@ -147,6 +148,21 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
             "sep" as const,
             { label: "Ver mi perfil", icon: <Icon name="users" />, onClick: () => setState({ fullProfile: me.id }) },
             { label: "Editar perfil", icon: <Icon name="edit" />, onClick: dialogs.profile },
+            "sep" as const,
+            ...savedAccounts()
+              .filter((a) => a.id !== me.id)
+              .map((a) => ({
+                label: `Cambiar a @${a.username ?? a.email.split("@")[0]}`,
+                icon: <span className="acc-dot" style={{ ["--c" as string]: a.color ?? "#6b7b77" }} />,
+                onClick: () =>
+                  void switchTo(a.id).then((ok) => {
+                    if (!ok) {
+                      toast(`La sesión de @${a.username ?? "esa cuenta"} venció: entrá con tu contraseña.`, "error");
+                      addAnotherAccount();
+                    }
+                  }),
+              })),
+            { label: "Agregar otra cuenta", icon: <Icon name="plus" />, onClick: addAnotherAccount },
           ]}
         />
       )}
