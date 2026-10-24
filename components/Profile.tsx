@@ -12,9 +12,11 @@ import {
   sendMessage,
   setBadge,
   setState,
+  toast,
   useStore,
   type State,
 } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 import type { Presence, Profile } from "@/lib/types";
 import { BadgeIcon, useBadges } from "./Badges";
 import { Name } from "./Name";
@@ -180,16 +182,38 @@ function AdminBadges({ p }: { p: Profile }) {
   const raw = useStore((s) => s.badges[p.id]);
   const granted = raw ?? [];
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const premium = !!p.premium;
+  const togglePremium = async () => {
+    setBusy(true);
+    const on = !premium;
+    const { error } = await supabase.rpc("fogon_set_premium", { p_user: p.id, p_on: on });
+    setBusy(false);
+    if (error) return fail(error);
+    setState((s) => ({ profiles: { ...s.profiles, [p.id]: { ...s.profiles[p.id], premium: on } } }));
+    toast(on ? `💎 Le diste Premium a @${p.username}` : `Le sacaste Premium a @${p.username}`);
+  };
   return (
     <section>
       <h3>
-        Insignias (admin)
+        Admin
         <button className="link-btn" onClick={() => setOpen(!open)}>
           {open ? "Listo" : "Editar"}
         </button>
       </h3>
       {open && (
         <div className="badge-edit">
+          {!p.is_bot && (
+            <div className="admin-premium">
+              <span>
+                💎 Fogón Premium <b className={premium ? "on" : ""}>{premium ? "Activo" : "No tiene"}</b>
+              </span>
+              <button className={`btn ${premium ? "danger" : "primary"} sm`} disabled={busy} onClick={() => void togglePremium()}>
+                {busy ? "…" : premium ? "Sacar Premium" : "Dar Premium"}
+              </button>
+            </div>
+          )}
+          <p className="admin-sub">Insignias</p>
           {GRANTABLE.map((b) => {
             const on = granted.includes(b);
             return (

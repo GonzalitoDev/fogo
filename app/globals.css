@@ -1252,3 +1252,10 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .official-composer .composer-box { display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 16px; }
 .official-composer textarea { flex: 1; min-width: 0; resize: none; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 15px; line-height: 1.4; padding: 6px 0; outline: none; }
 .official-composer .btn { flex: none; white-space: nowrap; }
+
+/* admin: dar Premium */
+.admin-premium { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px; margin-bottom: 6px; border-radius: 8px; background: var(--hover); font-size: 13.5px; }
+.admin-premium b { margin-left: 6px; font-weight: 600; color: var(--ink-3); }
+.admin-premium b.on { color: #ff73fa; }
+.admin-premium .btn { height: 28px; padding: 0 10px; font-size: 13px; flex: none; }
+.admin-sub { margin: 4px 6px 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ink-3); letter-spacing: .02em; }
