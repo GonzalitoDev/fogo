@@ -62,6 +62,7 @@ export function RolesDialog({ server, onClose }: { server: Server; onClose: () =
               </span>
               <span className="hint">
                 {counts[r.id] ?? 0} {counts[r.id] === 1 ? "miembro" : "miembros"}
+                {r.auto_assign ? " · automático" : ""}
               </span>
               {editable && <Icon name="edit" />}
             </button>
@@ -86,6 +87,7 @@ function RoleEditor(p: { server: Server; initial: Partial<Role>; myPerms: Set<Pe
   const [color, setColor] = useState(p.initial.color ?? ROLE_COLORS[0]);
   const [position, setPosition] = useState(p.initial.position ?? 1);
   const [hoist, setHoist] = useState(p.initial.hoist ?? true);
+  const [auto, setAuto] = useState(p.initial.auto_assign ?? false);
   const [perms, setPerms] = useState<Perm[]>(p.initial.perms ?? []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -102,7 +104,7 @@ function RoleEditor(p: { server: Server; initial: Partial<Role>; myPerms: Set<Pe
           setBusy(true);
           setErr("");
           try {
-            await saveRole({ id: p.initial.id, server_id: p.server.id, name, color, position, hoist, perms });
+            await saveRole({ id: p.initial.id, server_id: p.server.id, name, color, position, hoist, perms, auto_assign: auto });
             p.onBack();
           } catch (e) {
             setErr(friendlyError(e));
@@ -145,6 +147,9 @@ function RoleEditor(p: { server: Server; initial: Partial<Role>; myPerms: Set<Pe
         </label>
         <label className="radio">
           <input type="checkbox" checked={hoist} onChange={(e) => setHoist(e.target.checked)} /> Mostrar a sus miembros aparte en la lista
+        </label>
+        <label className="radio">
+          <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Darlo solo a los miembros nuevos cuando entran al servidor
         </label>
         <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 4 }}>
           <legend className="field" style={{ marginBottom: 6 }}>

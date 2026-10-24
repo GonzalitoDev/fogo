@@ -8,6 +8,7 @@ import { MemberRolesDialog } from "./Roles";
 import { Avatar, Confirm, type MenuItem } from "./ui";
 import { BadgeRow } from "./Badges";
 import { ProfilePopout } from "./Profile";
+import { BanDialog } from "./Moderation";
 
 export function MemberList({ server }: { server: Server }) {
   const state = useStore((s) => s);
@@ -43,14 +44,17 @@ export function MemberList({ server }: { server: Server }) {
   const total = (state.members[server.id] ?? []).length;
   const canAssign = can(state, server.id, "manage_roles");
   const canKick = can(state, server.id, "kick_members");
+  const canBan = can(state, server.id, "ban_members");
+  const [ban, setBan] = useState<Profile | null>(null);
   const myTop = topPosition(state, server.id, me?.id ?? "");
 
   const items = (p: Profile): MenuItem[] => {
     const out: MenuItem[] = [];
     if (p.id !== me?.id) out.push({ label: "Mandar mensaje directo", icon: <Icon name="chat" />, onClick: () => void openDm(p.id).catch(fail) });
     if (canAssign) out.push({ label: "Roles", icon: <Icon name="shield" />, onClick: () => setAssign(p) });
-    if (canKick && p.id !== me?.id && p.id !== server.owner_id && topPosition(state, server.id, p.id) < myTop)
-      out.push("sep", { label: `Echar a ${p.display_name}`, danger: true, icon: <Icon name="door" />, onClick: () => setKick(p) });
+    const below = p.id !== me?.id && p.id !== server.owner_id && topPosition(state, server.id, p.id) < myTop;
+    if (canKick && below) out.push("sep", { label: `Echar a ${p.display_name}`, danger: true, icon: <Icon name="door" />, onClick: () => setKick(p) });
+    if (canBan && below) out.push({ label: `Banear a ${p.display_name}`, danger: true, icon: <Icon name="door" />, onClick: () => setBan(p) });
     if (!out.length) out.push({ label: "Editá tu perfil desde el engranaje de abajo", onClick: () => {} });
     return out;
   };
@@ -95,6 +99,7 @@ export function MemberList({ server }: { server: Server }) {
           actions={items(menu.p).flatMap((it) => (it === "sep" || it.label.startsWith("Editá") || it.label.startsWith("Mandar") ? [] : [{ label: it.label, onClick: it.onClick, danger: it.danger }]))}
         />
       )}
+      {ban && <BanDialog server={server} member={ban} onClose={() => setBan(null)} />}
       {assign && <MemberRolesDialog server={server} member={assign} onClose={() => setAssign(null)} />}
       {kick && (
         <Confirm

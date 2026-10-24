@@ -22,6 +22,7 @@ import { DmSidebar, Rail, ServerSidebar, type NavDialogs } from "@/components/Na
 import { QuickSwitcher } from "@/components/Switcher";
 import { RolesDialog } from "@/components/Roles";
 import { FullProfile } from "@/components/Profile";
+import { BansDialog } from "@/components/Moderation";
 
 type Dialog =
   | { kind: "create" }
@@ -30,6 +31,7 @@ type Dialog =
   | { kind: "settings"; server: Server }
   | { kind: "leave"; server: Server }
   | { kind: "roles"; server: Server }
+  | { kind: "bans"; server: Server }
   | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" } }
   | { kind: "dm" }
   | { kind: "profile" }
@@ -138,6 +140,7 @@ export default function Page() {
     channelEdit: (initial) => setDialog({ kind: "channel", initial }),
     confirmLeave: (server) => setDialog({ kind: "leave", server }),
     roles: (server) => setDialog({ kind: "roles", server }),
+    bans: (server) => setDialog({ kind: "bans", server }),
     newDm: () => setDialog({ kind: "dm" }),
     profile: () => setDialog({ kind: "profile" }),
   };
@@ -207,6 +210,7 @@ export default function Page() {
       {dialog?.kind === "settings" && <ServerSettingsDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "leave" && <LeaveServerDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "roles" && <RolesDialog server={dialog.server} onClose={close} />}
+      {dialog?.kind === "bans" && <BansDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
       {(dialog?.kind === "profile" || editingProfile) && (

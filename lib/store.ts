@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
-import type { Presence, Status } from "./types";
+import type { Ban, Presence, Status } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
@@ -695,6 +695,35 @@ function removeServerLocal(serverId: string) {
   if (state.place.kind === "server" && state.place.serverId === serverId) go({ kind: "dm", channelId: null });
 }
 
+export async function banMember(serverId: string, userId: string, reason: string, deleteHours: 0 | 1 | 24 | 168) {
+  const { error } = await supabase.rpc("fogon_ban", { p_server: serverId, p_user: userId, p_reason: reason.trim(), p_delete_hours: deleteHours });
+  if (error) throw error;
+  setState((s) => ({ members: { ...s.members, [serverId]: (s.members[serverId] ?? []).filter((u) => u !== userId) } }));
+  // si se borraron mensajes, sacarlos de la vista
+  if (deleteHours) {
+    const since = Date.now() - deleteHours * 3600_000;
+    setState((s) => {
+      const messages = { ...s.messages };
+      for (const [ch, cm] of Object.entries(messages)) {
+        if (s.channels[ch]?.server_id !== serverId) continue;
+        messages[ch] = { ...cm, list: cm.list.filter((m) => !(m.author_id === userId && new Date(m.created_at).getTime() > since)) };
+      }
+      return { messages };
+    });
+  }
+}
+
+export async function listBans(serverId: string): Promise<Ban[]> {
+  const { data, error } = await supabase.from("fogon_bans").select(`*, profile:fogon_profiles!fogon_bans_user_id_fkey(${PCOLS})`).eq("server_id", serverId).order("created_at", { ascending: false });
+  if (error) throw error;
+  return data as Ban[];
+}
+
+export async function unban(serverId: string, userId: string) {
+  const { error } = await supabase.from("fogon_bans").delete().match({ server_id: serverId, user_id: userId });
+  if (error) throw error;
+}
+
 export async function kickMember(serverId: string, userId: string) {
   const { error } = await supabase.from("fogon_members").delete().match({ server_id: serverId, user_id: userId });
   if (error) throw error;
@@ -754,7 +783,7 @@ export async function findUser(username: string): Promise<Profile | null> {
 
 /* ---------- roles y permisos ---------- */
 
-export const ALL_PERMS: Perm[] = ["manage_server", "manage_channels", "manage_roles", "manage_messages", "kick_members", "mention_everyone"];
+export const ALL_PERMS: Perm[] = ["manage_server", "manage_channels", "manage_roles", "manage_messages", "kick_members", "ban_members", "mention_everyone"];
 
 export function serverRoles(s: State, serverId: string): Role[] {
   return Object.values(s.roles)
@@ -791,7 +820,7 @@ export function nameColor(s: State, serverId: string | null | undefined, userId:
 }
 
 export async function saveRole(r: Partial<Role> & { server_id: string }) {
-  const fields = { name: r.name?.trim(), color: r.color, position: r.position, hoist: r.hoist, perms: r.perms };
+  const fields = { name: r.name?.trim(), color: r.color, position: r.position, hoist: r.hoist, perms: r.perms, auto_assign: !!r.auto_assign };
   let id = r.id;
   if (id) {
     const { error } = await supabase.from("fogon_roles").update(fields).eq("id", id);

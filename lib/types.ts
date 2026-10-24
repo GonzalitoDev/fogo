@@ -72,12 +72,13 @@ export type Unread = { unread: boolean; mentions: number };
 /** Dónde está parado el usuario */
 export type Place = { kind: "server"; serverId: string; channelId: string | null } | { kind: "dm"; channelId: string | null };
 
-export type Perm = "manage_server" | "manage_channels" | "manage_roles" | "manage_messages" | "kick_members" | "mention_everyone";
+export type Perm = "manage_server" | "manage_channels" | "manage_roles" | "manage_messages" | "kick_members" | "ban_members" | "mention_everyone";
 
 export const PERMS: { id: Perm; label: string; help: string }[] = [
   { id: "manage_channels", label: "Administrar canales", help: "Crear, editar y borrar canales y categorías." },
   { id: "manage_messages", label: "Administrar mensajes", help: "Borrar mensajes de otras personas." },
   { id: "kick_members", label: "Echar miembros", help: "Sacar del servidor a quien tenga un rol más bajo." },
+  { id: "ban_members", label: "Banear miembros", help: "Sacar y prohibir volver a quien tenga un rol más bajo, y ver la lista de baneados." },
   { id: "manage_roles", label: "Administrar roles", help: "Crear y asignar roles por debajo del suyo, sin dar permisos que no tenga." },
   { id: "manage_server", label: "Administrar el servidor", help: "Cambiar el nombre y generar un link de invitación nuevo." },
   { id: "mention_everyone", label: "Mencionar a @everyone", help: "Avisar a todos los miembros a la vez." },
@@ -91,5 +92,8 @@ export type Role = {
   position: number;
   hoist: boolean;
   perms: Perm[];
+  auto_assign?: boolean;
   created_at: string;
 };
+
+export type Ban = { server_id: string; user_id: string; reason: string; banned_by: string | null; created_at: string; profile?: Profile | null };

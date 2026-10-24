@@ -15,6 +15,7 @@ export type NavDialogs = {
   channelEdit: (c: Partial<Channel> & { server_id: string; kind: "text" | "category" }) => void;
   confirmLeave: (s: Server) => void;
   roles: (s: Server) => void;
+  bans: (s: Server) => void;
   newDm: () => void;
   profile: () => void;
 };
@@ -190,6 +191,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
         ] as MenuItem[])
       : []),
     ...(canRoles ? ([{ label: "Roles", icon: <Icon name="shield" />, onClick: () => dialogs.roles(server) }] as MenuItem[]) : []),
+    ...(can(state, server.id, "ban_members") ? ([{ label: "Baneos", icon: <Icon name="door" />, onClick: () => dialogs.bans(server) }] as MenuItem[]) : []),
     ...(canServer ? ([{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }] as MenuItem[]) : []),
     ...(!isOwner ? (["sep", { label: "Salir del servidor", icon: <Icon name="door" />, danger: true, onClick: () => dialogs.confirmLeave(server) }] as MenuItem[]) : []),
   ];

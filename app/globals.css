@@ -500,3 +500,13 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; }
   .pv-full-actions { position: static; }
   .pv.pv-full .pv-bubble { left: 118px; top: -30px; }
 }
+
+/* ---------- baneos ---------- */
+.ban-head { display: flex; gap: 14px; align-items: flex-start; }
+.ban-head h2 { margin-bottom: 6px !important; }
+.ban-list { display: grid; gap: 4px; max-height: 50vh; overflow: auto; }
+.ban-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; }
+.ban-row:hover { background: var(--hover); }
+.ban-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.ban-text b { font-size: 14px; }
+.ban-reason { font-size: 13px; color: var(--ink-2); font-style: italic; overflow-wrap: anywhere; }
