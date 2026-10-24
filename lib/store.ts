@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
-import type { Ban, ChanPerm, Override, Presence, Relation, SettingsView, Status } from "./types";
+import type { Ban, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
@@ -43,6 +43,11 @@ export type State = {
   sounds: boolean;
   jumpTo: string | null; // mensaje a mostrar (desde búsqueda o fijados)
   overrides: Record<string, Override[]>; // channelId -> permisos por rol
+  voice: { channelId: string; serverId: string; status: "connecting" | "connected" } | null;
+  micMuted: boolean;
+  voiceIn: Record<string, VoiceState>; // userId -> canal de voz donde está (de la presencia)
+  speaking: Record<string, true>;
+  voicePeers: Record<string, "connecting" | "connected" | "failed">;
 };
 
 const initial: State = {
@@ -77,6 +82,11 @@ const initial: State = {
   sounds: true,
   jumpTo: null,
   overrides: {},
+  voice: null,
+  micMuted: false,
+  voiceIn: {},
+  speaking: {},
+  voicePeers: {},
 };
 
 let state: State = initial;
@@ -88,7 +98,7 @@ export function setState(patch: Partial<State> | ((s: State) => Partial<State>))
   state = { ...state, ...p };
   listeners.forEach((l) => l());
 }
-function subscribe(l: () => void) {
+export function subscribe(l: () => void) {
   listeners.add(l);
   return () => listeners.delete(l);
 }
@@ -126,6 +136,7 @@ export function go(place: Place) {
     if (first) return go({ ...place, channelId: first });
   }
   setState({ place });
+  if (place.channelId && state.channels[place.channelId]?.kind === "voice") return;
   if (place.channelId) {
     try {
       if (place.kind === "server") localStorage.setItem(`fogon:last:${place.serverId}`, place.channelId);
@@ -199,7 +210,7 @@ async function onSession(session: Session | null) {
   void loadBadges();
   void loadFriends();
   try {
-    setState({ sounds: localStorage.getItem("fogon:sounds") !== "0" });
+    setState({ sounds: localStorage.getItem("fogon:sounds") !== "0", micMuted: localStorage.getItem("fogon:mic") === "0" });
   } catch {}
   startRealtime();
   startPresence();
@@ -277,9 +288,13 @@ function myPresence(): Presence | null {
 async function trackPresence() {
   if (!pres) return;
   const p = myPresence();
-  if (p) await pres.track({ status: p });
+  const v = state.voice;
+  const voice: VoiceState | undefined = v ? { ch: v.channelId, muted: state.micMuted || !state.sounds, deafened: !state.sounds } : undefined;
+  // invisible pero en un canal de voz: los de la llamada igual te tienen que ver
+  if (p || voice) await pres.track({ status: p ?? "offline", voice });
   else await pres.untrack();
 }
+export const retrackPresence = () => void trackPresence();
 
 function startPresence() {
   stopPresence();
@@ -288,16 +303,20 @@ function startPresence() {
   pres = supabase.channel("fogon-presence", { config: { presence: { key: id } } });
   pres
     .on("presence", { event: "sync" }, () => {
-      const raw = pres!.presenceState() as Record<string, { status?: Presence }[]>;
+      const raw = pres!.presenceState() as Record<string, { status?: Presence; voice?: VoiceState }[]>;
       const map: Record<string, Presence> = {};
+      const voiceIn: Record<string, VoiceState> = {};
       const rank = { online: 3, dnd: 2, idle: 1, offline: 0 } as const;
       for (const [uid, metas] of Object.entries(raw)) {
         // varias pestañas: gana la más "activa"
         let best: Presence = "offline";
-        for (const m of metas) if (m.status && rank[m.status] > rank[best]) best = m.status;
+        for (const m of metas) {
+          if (m.status && rank[m.status] > rank[best]) best = m.status;
+          if (m.voice?.ch) voiceIn[uid] = m.voice;
+        }
         if (best !== "offline") map[uid] = best;
       }
-      setState({ presence: map });
+      setState({ presence: map, voiceIn });
     })
     .subscribe((st) => {
       if (st === "SUBSCRIBED") void trackPresence();
@@ -761,7 +780,7 @@ export async function kickMember(serverId: string, userId: string) {
   setState((s) => ({ members: { ...s.members, [serverId]: (s.members[serverId] ?? []).filter((u) => u !== userId) } }));
 }
 
-export async function saveChannel(c: Partial<Channel> & { server_id: string; kind: "text" | "category" }) {
+export async function saveChannel(c: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" }) {
   const fields = { name: c.name, topic: c.topic ?? "", parent_id: c.parent_id ?? null, position: c.position ?? 0 };
   let id = c.id;
   if (id) {
@@ -949,6 +968,17 @@ export function setSounds(on: boolean) {
   try {
     localStorage.setItem("fogon:sounds", on ? "1" : "0");
   } catch {}
+  void trackPresence();
+}
+
+export function setMicMuted(on: boolean) {
+  // desmutear el micrófono también saca el ensordecido, como en Discord
+  setState(on ? { micMuted: true } : { micMuted: false, sounds: true });
+  try {
+    localStorage.setItem("fogon:mic", on ? "0" : "1");
+    if (!on) localStorage.setItem("fogon:sounds", "1");
+  } catch {}
+  void trackPresence();
 }
 
 function notify(m: Message) {

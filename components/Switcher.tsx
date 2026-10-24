@@ -61,7 +61,7 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
         <div id="switcher-list" role="listbox">
           {items.map((it, i) => (
             <button key={it.c.id} role="option" aria-selected={i === sel} onMouseEnter={() => setSel(i)} onClick={() => pick(i)}>
-              {it.c.kind === "dm" ? <Avatar p={it.peer} size="xs" /> : <Icon name="hash" />}
+              {it.c.kind === "dm" ? <Avatar p={it.peer} size="xs" /> : <Icon name={it.c.kind === "voice" ? "speaker" : "hash"} />}
               <span style={{ fontWeight: unread[it.c.id]?.unread ? 700 : 500 }}>{it.label}</span>
               <span className="where">{it.where}</span>
             </button>

@@ -25,6 +25,7 @@ import { FullProfile } from "@/components/Profile";
 import { FriendsPage } from "@/components/Friends";
 import { loadFont, SettingsScreen } from "@/components/Settings";
 import { BansDialog } from "@/components/Moderation";
+import { VoicePane } from "@/components/Voice";
 
 type Dialog =
   | { kind: "create" }
@@ -34,7 +35,7 @@ type Dialog =
   | { kind: "leave"; server: Server }
   | { kind: "roles"; server: Server }
   | { kind: "bans"; server: Server }
-  | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" } }
+  | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" } }
   | { kind: "dm" }
   | { kind: "profile" }
   | { kind: "switcher" };
@@ -149,7 +150,7 @@ export default function Page() {
   };
   const server = place.kind === "server" ? servers[place.serverId] : undefined;
   const canManageChannels = can(getState(), server?.id, "manage_channels");
-  const showMembers = !!server && membersOpen && !!channel;
+  const showMembers = !!server && membersOpen && !!channel && channel.kind !== "voice";
   const close = () => setDialog(null);
 
   return (
@@ -160,7 +161,9 @@ export default function Page() {
       </div>
       {drawer && <div className="drawer-scrim" onClick={() => setDrawer(false)} />}
 
-      {channel && channel.kind !== "category" ? (
+      {channel?.kind === "voice" ? (
+        <VoicePane key={channel.id} channel={channel} onMenu={() => setDrawer(true)} />
+      ) : channel && channel.kind !== "category" ? (
         <ChatPane key={channel.id} channel={channel} onMenu={() => setDrawer(true)} membersOpen={showMembers} onToggleMembers={toggleMembers} />
       ) : !server ? (
         <FriendsPage onMenu={() => setDrawer(true)} />

@@ -8,12 +8,14 @@ import type { Channel, Server } from "@/lib/types";
 import { Ember, Icon } from "./Icon";
 import { FriendsIcon } from "./Friends";
 import { Avatar, Menu, STATUS_LABEL, type MenuItem } from "./ui";
+import { MicButton, VoiceConnected, VoiceRow } from "./Voice";
+import { joinVoice } from "@/lib/voice";
 
 export type NavDialogs = {
   createServer: () => void;
   invite: (s: Server) => void;
   serverSettings: (s: Server) => void;
-  channelEdit: (c: Partial<Channel> & { server_id: string; kind: "text" | "category" }) => void;
+  channelEdit: (c: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" }) => void;
   confirmLeave: (s: Server) => void;
   roles: (s: Server) => void;
   bans: (s: Server) => void;
@@ -96,6 +98,8 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
   const pres = me ? presenceOf(st, me.id) : "offline";
   const statuses: Status[] = ["online", "idle", "dnd", "invisible"];
   return (
+    <>
+    <VoiceConnected />
     <div className="me-panel">
       <button
         className="me-who"
@@ -112,12 +116,13 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
           <span>{me?.custom_status || STATUS_LABEL[pres]}</span>
         </span>
       </button>
+      <MicButton />
       <button
         className={`icon-btn${sounds ? "" : " off"}`}
         onClick={() => setSounds(!sounds)}
         aria-pressed={!sounds}
-        aria-label={sounds ? "Silenciar sonidos y avisos" : "Activar sonidos y avisos"}
-        title={sounds ? "Ensordecer (sin sonidos ni avisos)" : "Dejar de ensordecer"}
+        aria-label={sounds ? "Ensordecer" : "Dejar de ensordecer"}
+        title={sounds ? "Ensordecer (sin voz, sonidos ni avisos)" : "Dejar de ensordecer"}
       >
         <Icon name={sounds ? "headphones" : "headphonesOff"} />
       </button>
@@ -142,6 +147,7 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
         />
       )}
     </div>
+    </>
   );
 }
 
@@ -185,7 +191,20 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
     go({ kind: "server", serverId: server.id, channelId: c.id });
     onNavigate();
   };
-  const row = (c: Channel) => (
+  const row = (c: Channel) =>
+    c.kind === "voice" ? (
+      <VoiceRow
+        key={c.id}
+        c={c}
+        active={place.channelId === c.id}
+        owner={owner}
+        onPick={() => {
+          pick(c);
+          void joinVoice(c.id);
+        }}
+        onEdit={() => dialogs.channelEdit({ ...c, server_id: server.id, kind: "voice" })}
+      />
+    ) : (
     <ChannelRow
       key={c.id}
       c={c}
@@ -258,7 +277,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
             </div>
           );
         })}
-        {!tree.flat.length && <div className="side-empty">Este servidor no tiene canales todavía.</div>}
+        {!tree.count && <div className="side-empty">Este servidor no tiene canales todavía.</div>}
       </div>
       <MePanel dialogs={dialogs} />
       {menu && <Menu at={menu} items={items} onClose={() => setMenu(null)} label={`Opciones de ${server.name}`} className="server-menu" />}

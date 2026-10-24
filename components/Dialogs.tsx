@@ -311,7 +311,7 @@ export function LeaveServerDialog({ server, onClose }: { server: Server; onClose
   );
 }
 
-export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> & { server_id: string; kind: "text" | "category" }; onClose: () => void }) {
+export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" }; onClose: () => void }) {
   const channels = useStore((s) => s.channels);
   const cats = Object.values(channels).filter((c) => c.server_id === initial.server_id && c.kind === "category").sort((a, b) => a.position - b.position);
   const isCat = initial.kind === "category";
@@ -322,7 +322,10 @@ export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const finalName = isCat ? name.trim() : slugChannel(name);
+  const [kind, setKind] = useState<"text" | "voice">(initial.kind === "voice" ? "voice" : "text");
+  const isVoice = !isCat && kind === "voice";
+  // los de voz se escriben como uno quiera (con mayúsculas y espacios), como en Discord
+  const finalName = isCat || isVoice ? name.trim() : slugChannel(name);
   const noun = isCat ? "categoría" : "canal";
   const [tab, setTab] = useState<"general" | "perms">("general");
   const live = initial.id ? channels[initial.id] : undefined;
@@ -340,7 +343,7 @@ export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> 
       )}
       {tab === "perms" && live ? (
         <>
-          <h2>Permisos de {isCat ? live.name : `#${live.name}`}</h2>
+          <h2>Permisos de {isCat || live.kind === "voice" ? live.name : `#${live.name}`}</h2>
           <ChannelPermissions channel={live} />
           <div className="foot">
             <button type="button" className="btn primary" onClick={onClose}>
@@ -357,7 +360,7 @@ export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> 
           setBusy(true);
           setErr("");
           try {
-            await saveChannel({ ...initial, name: finalName, topic: isCat ? "" : topic, parent_id: isCat ? null : parent || null, position });
+            await saveChannel({ ...initial, kind: isCat ? "category" : kind, name: finalName, topic: isCat || isVoice ? "" : topic, parent_id: isCat ? null : parent || null, position });
             onClose();
           } catch (e) {
             setErr(friendlyError(e));
@@ -365,18 +368,40 @@ export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> 
           }
         }}
       >
-        <h2>{initial.id ? `Editar ${isCat ? "categoría" : `#${initial.name}`}` : `Crear ${noun}`}</h2>
+        <h2>{initial.id ? `Editar ${isCat ? "categoría" : initial.kind === "voice" ? initial.name : `#${initial.name}`}` : `Crear ${noun}`}</h2>
+        {!isCat && !initial.id && (
+          <div className="field" role="radiogroup" aria-label="Tipo de canal">
+            <span>Tipo de canal</span>
+            {(
+              [
+                ["text", "hash", "Texto", "Mandá mensajes, imágenes, GIF, emojis, opiniones y chistes"],
+                ["voice", "speaker", "Voz", "Pasa el rato con voz"],
+              ] as const
+            ).map(([v, ico, label, help]) => (
+              <label key={v} className={`kind-opt${kind === v ? " on" : ""}`}>
+                <Icon name={ico} />
+                <span>
+                  <b>{label}</b>
+                  <small>{help}</small>
+                </span>
+                <input type="radio" name="channel-kind" value={v} checked={kind === v} onChange={() => setKind(v)} />
+              </label>
+            ))}
+          </div>
+        )}
         <label className="field">
           <span>Nombre</span>
-          <input id="channel-name" className="input" autoFocus maxLength={100} value={name} placeholder={isCat ? "Proyectos" : "nuevo-canal"} onChange={(e) => setName(e.target.value)} />
-          {!isCat && name && finalName !== name && <span className="hint" style={{ fontWeight: 400 }}>Va a quedar como #{finalName || "…"}</span>}
+          <input id="channel-name" className="input" autoFocus maxLength={100} value={name} placeholder={isCat ? "Proyectos" : isVoice ? "Sala de estar" : "nuevo-canal"} onChange={(e) => setName(e.target.value)} />
+          {!isCat && !isVoice && name && finalName !== name && <span className="hint" style={{ fontWeight: 400 }}>Va a quedar como #{finalName || "…"}</span>}
         </label>
         {!isCat && (
           <>
-            <label className="field">
-              <span>Tema (opcional)</span>
-              <input id="channel-topic" className="input" maxLength={1024} value={topic} placeholder="De qué se habla acá" onChange={(e) => setTopic(e.target.value)} />
-            </label>
+            {!isVoice && (
+              <label className="field">
+                <span>Tema (opcional)</span>
+                <input id="channel-topic" className="input" maxLength={1024} value={topic} placeholder="De qué se habla acá" onChange={(e) => setTopic(e.target.value)} />
+              </label>
+            )}
             <label className="field">
               <span>Categoría</span>
               <select id="channel-parent" className="input" value={parent} onChange={(e) => setParent(e.target.value)}>

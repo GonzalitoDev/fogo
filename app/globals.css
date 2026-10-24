@@ -981,3 +981,67 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 
 /* los mensajes nunca se achican para entrar en la pantalla (se encimaban) */
 .msgs > div > *, .msg, .day, .new-divider, .welcome, .blocked-msg { flex-shrink: 0; }
+
+/* ---------- canales de voz ---------- */
+.vc-chan.joined .label { color: var(--ink-strong); }
+.vc-roster { list-style: none; margin: 0 0 4px; padding: 0 0 0 28px; }
+.vc-roster li button { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-3); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.vc-roster li button:hover { background: rgba(78, 80, 88, 0.3); color: var(--ink); }
+.vc-roster .avatar { width: 24px; height: 24px; font-size: 10px; box-shadow: 0 0 0 2px transparent; transition: box-shadow 0.1s; }
+.vc-roster li.speaking .avatar { box-shadow: 0 0 0 2px #23a55a; }
+.vc-roster li.speaking .vc-name { color: var(--ink-strong); }
+.vc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vc-flags { display: inline-flex; gap: 2px; color: #f23f43; flex: none; }
+.vc-flags svg { width: 14px; height: 14px; }
+
+.vc-panel { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; background: #232428; border-bottom: 1px solid #2b2d31; }
+.vc-panel-info { flex: 1; min-width: 0; line-height: 1.25; }
+.vc-panel-info b { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #23a55a; }
+.vc-panel-info b.wait { color: #f0b232; }
+.vc-panel-info b.bad { color: #f23f43; }
+.vc-panel-info b svg { width: 16px; height: 16px; }
+.vc-where { display: block; max-width: 100%; border: 0; padding: 0; background: none; color: var(--ink-2); font: inherit; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-align: left; }
+.vc-where:hover { text-decoration: underline; color: var(--ink); }
+.vc-panel .vc-leave { width: 32px; height: 32px; color: var(--ink-2); }
+.vc-panel .vc-leave:hover { background: rgba(78, 80, 88, 0.6); color: #f23f43; }
+
+.vc-pane { background: #000; }
+.vc-pane .chat-head { background: #000; box-shadow: none; }
+.vc-pane .chat-head .hash { width: 22px; height: 22px; color: #80848e; flex: none; }
+.vc-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
+.vc-grid { display: grid; gap: 8px; width: 100%; max-width: 1100px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.vc-grid.n1 { max-width: 640px; }
+.vc-grid.n2 { max-width: 900px; }
+.vc-tile { position: relative; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--tile, #5865f2) 70%, #111214); display: grid; place-items: center; cursor: pointer; box-shadow: inset 0 0 0 0 #23a55a; transition: box-shadow 0.1s; font: inherit; color: #fff; }
+.vc-tile.speaking { box-shadow: inset 0 0 0 3px #23a55a; }
+.vc-tile .avatar { width: 80px; height: 80px; font-size: 28px; }
+.vc-tile.speaking .avatar { box-shadow: 0 0 0 3px #23a55a; }
+.vc-tag { position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 6px; max-width: calc(100% - 16px); padding: 3px 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); font-size: 14px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.vc-state { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); font-size: 12px; color: #f0b232; }
+.vc-empty { text-align: center; color: #b5bac1; max-width: 360px; }
+.vc-empty h2 { color: #fff; margin: 12px 0 4px; font-size: 24px; }
+.vc-empty-ico { width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; background: #2b2d31; display: grid; place-items: center; }
+.vc-empty-ico svg { width: 36px; height: 36px; color: #b5bac1; }
+.vc-controls { flex: none; display: flex; justify-content: center; gap: 12px; padding: 16px 16px max(20px, env(safe-area-inset-bottom)); }
+.vc-btn { width: 56px; height: 56px; border-radius: 50%; border: 0; background: #2b2d31; color: #fff; display: grid; place-items: center; cursor: pointer; transition: background 0.15s; }
+.vc-btn:hover { background: #3a3c43; }
+.vc-btn.off { background: #fff; color: #f23f43; }
+.vc-btn.hang { background: #da373c; }
+.vc-btn.hang:hover { background: #a12828; }
+.vc-btn svg { width: 24px; height: 24px; }
+.vc-join { background: #248046; color: #fff; border: 0; height: 44px; padding: 0 20px; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 6px; }
+.vc-join:hover { background: #1a6334; }
+.vc-join svg { width: 20px; height: 20px; }
+
+.kind-opt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 6px; background: var(--input-bg, #1e1f22); cursor: pointer; margin-top: 6px; color: var(--ink-2); }
+.kind-opt.on { background: rgba(78, 80, 88, 0.6); color: var(--ink-strong); }
+.kind-opt svg { width: 24px; height: 24px; flex: none; }
+.kind-opt span { flex: 1; display: grid; }
+.kind-opt b { font-size: 15px; text-transform: none; letter-spacing: 0; }
+.kind-opt small { font-size: 12px; color: var(--ink-3); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.kind-opt input { accent-color: #fff; width: 18px; height: 18px; }
+@media (max-width: 760px) {
+  .vc-grid { grid-template-columns: 1fr 1fr; }
+  .vc-grid.n1 { grid-template-columns: 1fr; }
+  .vc-tile .avatar { width: 56px; height: 56px; font-size: 20px; }
+}

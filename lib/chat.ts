@@ -82,9 +82,14 @@ export function channelTree(channels: Channel[], serverId: string) {
   const byPos = (a: Channel, b: Channel) => a.position - b.position || a.created_at.localeCompare(b.created_at);
   const cats = mine.filter((c) => c.kind === "category").sort(byPos);
   const texts = mine.filter((c) => c.kind === "text").sort(byPos);
+  // en la barra lateral van los de texto y abajo los de voz, como en Discord
+  const listed = [...texts, ...mine.filter((c) => c.kind === "voice").sort(byPos)];
+  const loose = listed.filter((c) => !c.parent_id || !cats.some((k) => k.id === c.parent_id));
   return {
-    loose: texts.filter((c) => !c.parent_id || !cats.some((k) => k.id === c.parent_id)),
-    groups: cats.map((cat) => ({ cat, items: texts.filter((c) => c.parent_id === cat.id) })),
+    loose,
+    groups: cats.map((cat) => ({ cat, items: listed.filter((c) => c.parent_id === cat.id) })),
+    count: listed.length,
+    /** solo texto: para menciones #canal, búsqueda, etc. */
     flat: [...texts.filter((c) => !c.parent_id || !cats.some((k) => k.id === c.parent_id)), ...cats.flatMap((cat) => texts.filter((c) => c.parent_id === cat.id))],
   };
 }

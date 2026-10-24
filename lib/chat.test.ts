@@ -112,6 +112,16 @@ describe("canales", () => {
     expect(t.groups.map((g) => [g.cat.id, g.items.map((i) => i.id)])).toEqual([["cat1", ["a", "b"]], ["cat2", ["c"]]]);
     expect(t.flat.map((c) => c.id)).toEqual(["suelto", "a", "b", "c"]);
   });
+  it("los de voz van debajo de los de texto y no cuentan para #menciones", () => {
+    const ch = (id: string, kind: Channel["kind"], position: number, parent: string | null = null): Channel => ({
+      id, server_id: "s", kind, name: id, topic: "", position, parent_id: parent, last_message_at: null, created_at: "2026-01-01",
+    });
+    const t = channelTree([ch("cat", "category", 0), ch("voz", "voice", 0, "cat"), ch("general", "text", 5, "cat"), ch("lobby", "voice", 0)], "s");
+    expect(t.groups[0].items.map((i) => i.id)).toEqual(["general", "voz"]);
+    expect(t.loose.map((i) => i.id)).toEqual(["lobby"]);
+    expect(t.flat.map((c) => c.id)).toEqual(["general"]);
+    expect(t.count).toBe(3);
+  });
 });
 
 import { firstUnreadId } from "./chat";

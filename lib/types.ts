@@ -27,7 +27,10 @@ export type Server = {
   created_at: string;
 };
 
-export type ChannelKind = "text" | "category" | "dm";
+export type ChannelKind = "text" | "category" | "dm" | "voice";
+
+/** Quién está en un canal de voz (viaja en la presencia global). */
+export type VoiceState = { ch: string; muted: boolean; deafened: boolean };
 
 export type Channel = {
   id: string;
