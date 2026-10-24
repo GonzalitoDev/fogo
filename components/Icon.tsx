@@ -43,6 +43,9 @@ const P: Record<string, string> = {
   bot: "M12 8V4M8 4h8M5 8h14v10H5zM9 13h.01M15 13h.01M2 12v3M22 12v3M9 16h6",
   noise: "M2 12h2M6 8v8M10 5v14M14 9v6M18 7v10M22 12h-1",
   signal: "M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16",
+  screen: "M3 4h18v12H3zM8 20h8M12 16v4",
+  screenOff: "M3 4h18v12H3zM8 20h8M12 16v4M2 2l20 20",
+  expand: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
 };
 
 export function Icon({ name, className }: { name: keyof typeof P | string; className?: string }) {

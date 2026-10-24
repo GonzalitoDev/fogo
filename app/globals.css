@@ -1456,3 +1456,23 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .role-grip.off { visibility: hidden; }
 .role-arrows { display: flex; flex: none; }
 .role-arrows .icon-btn { width: 28px; height: 28px; font-size: 15px; }
+
+/* compartir pantalla */
+.live-pill { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 4px; background: #ed4245; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .03em; flex: none; }
+.vc-roster .live-pill { margin-left: auto; }
+.vc-stage.has-screen { display: flex; flex-direction: column; gap: 12px; }
+.screen-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.screen-main { position: relative; flex: 1; min-height: 220px; border-radius: 12px; overflow: hidden; background: #000; display: grid; place-items: center; }
+.screen-main video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.screen-main:fullscreen { border-radius: 0; }
+.screen-wait { color: #b5bac1; font-size: 14px; padding: 20px; text-align: center; }
+.screen-label { position: absolute; left: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 13px; font-weight: 600; }
+.screen-full { position: absolute; right: 8px; bottom: 8px; background: rgba(0, 0, 0, .6); color: #fff; }
+.screen-thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.screen-thumbs button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, rgba(255,255,255,.1)); background: var(--side); color: var(--ink-2); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.screen-thumbs button.on { border-color: var(--accent); color: var(--ink-strong); }
+.vc-grid.mini { flex: none; max-height: 132px; overflow-x: auto; display: flex; gap: 8px; }
+.vc-grid.mini .vc-tile { flex: 0 0 160px; height: 112px; }
+.vc-btn.screen-btn.on { background: #23a55a; color: #fff; }
+.vc-btn:disabled { opacity: .45; cursor: not-allowed; }
+.vc-grid.mini .vc-tile { aspect-ratio: auto; }

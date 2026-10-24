@@ -29,7 +29,7 @@ type Sig =
   | { from: string; to: string; type: "offer" | "answer"; sdp: string }
   | { from: string; to: string; type: "ice"; candidate: RTCIceCandidateInit };
 
-type Peer = { pc: RTCPeerConnection; audio: HTMLAudioElement; pending: RTCIceCandidateInit[]; stopMeter?: () => void; sender?: RTCRtpSender };
+type Peer = { pc: RTCPeerConnection; audio: HTMLAudioElement; pending: RTCIceCandidateInit[]; stopMeter?: () => void; sender?: RTCRtpSender; video?: RTCRtpTransceiver };
 export type NoiseMode = "ia" | "navegador" | "off";
 
 let chan: RealtimeChannel | null = null;
@@ -274,6 +274,11 @@ function peerFor(uid: string): Peer {
       void p.sender.setParameters(params).catch(() => {});
     }
   }
+  // canal de video listo de entrada (lo crea el que llama): compartir pantalla después es instantáneo
+  if (meId() < uid) {
+    p.video = pc.addTransceiver("video", { direction: "sendrecv" });
+    void plugScreen(p);
+  }
   pc.onicecandidate = (e) => {
     if (e.candidate) send({ from: meId(), to: uid, type: "ice", candidate: e.candidate.toJSON() });
   };
@@ -282,6 +287,11 @@ function peerFor(uid: string): Peer {
     try {
       Object.assign(e.receiver, { jitterBufferTarget: 0, playoutDelayHint: 0 });
     } catch {}
+    if (e.track.kind === "video") {
+      const vs = new MediaStream([e.track]);
+      setState((st) => ({ screens: { ...st.screens, [uid]: vs } }));
+      return;
+    }
     const stream = e.streams[0] ?? new MediaStream([e.track]);
     audio.srcObject = stream;
     void audio.play().catch(() => {});
@@ -310,6 +320,12 @@ function dropPeer(uid: string) {
   p.pc.close();
   p.audio.srcObject = null;
   peers.delete(uid);
+  if (getState().screens[uid])
+    setState((st) => {
+      const screens = { ...st.screens };
+      delete screens[uid];
+      return { screens };
+    });
   setPeerState(uid, null);
 }
 
@@ -328,6 +344,13 @@ async function onSignal(m: Sig) {
       const p = peerFor(m.from);
       await p.pc.setRemoteDescription({ type: "offer", sdp: tuneOpus(m.sdp, bitrateNow()) });
       for (const c of p.pending.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
+      // el canal de video que trajo la oferta: lo dejo para mandar y recibir
+      const vt = p.pc.getTransceivers().find((t) => t.receiver.track?.kind === "video");
+      if (vt) {
+        vt.direction = "sendrecv";
+        p.video = vt;
+        void plugScreen(p);
+      }
       const answer = await p.pc.createAnswer();
       const sdp = tuneOpus(answer.sdp ?? "", bitrateNow());
       await p.pc.setLocalDescription({ type: "answer", sdp });
@@ -420,6 +443,10 @@ export async function leaveVoice(silent = false) {
   joinSeq++;
   const was = !!getState().voice;
   for (const uid of [...peers.keys()]) dropPeer(uid);
+  if (getState().localScreen) {
+    stopScreenTracks();
+    setState({ localScreen: null });
+  }
   stopLocalMeter?.();
   stopLocalMeter = undefined;
   clearInterval(pingTimer);
@@ -435,10 +462,77 @@ export async function leaveVoice(silent = false) {
     void supabase.removeChannel(c);
   }
   if (was) {
-    setState({ voice: null, speaking: {}, voicePeers: {}, voicePing: null });
+    setState({ voice: null, speaking: {}, voicePeers: {}, voicePing: null, screens: {} });
     retrackPresence();
     if (!silent) ping(false);
   }
+}
+
+/* ---------- compartir pantalla (en vivo, directo entre navegadores) ---------- */
+
+let screenTrack: MediaStreamTrack | null = null;
+
+/** Engancha mi pantalla (o nada) al canal de video de una conexión, con prioridad a la fluidez. */
+async function plugScreen(p: Peer) {
+  const sender = p.video?.sender;
+  if (!sender) return;
+  try {
+    await sender.replaceTrack(screenTrack);
+    if (!screenTrack) return;
+    const params = sender.getParameters();
+    if (params.encodings?.length) {
+      params.encodings.forEach((e) => Object.assign(e, { maxBitrate: 2_500_000, maxFramerate: 30, priority: "high", networkPriority: "high" }));
+    }
+    Object.assign(params, { degradationPreference: "balanced" });
+    await sender.setParameters(params).catch(() => {});
+  } catch (e) {
+    console.warn("[fogon pantalla]", e);
+  }
+}
+
+export function screenSupported() {
+  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
+}
+
+export async function startScreenShare() {
+  const s = getState();
+  if (!s.voice) return toast("Entrá a un canal de voz para compartir pantalla.", "error");
+  if (!screenSupported()) return toast("Este navegador no permite compartir pantalla (probá desde una compu con Chrome, Edge o Firefox).", "error");
+  if (!channelAllows(s, s.voice.channelId, "video")) return toast("No tenés permiso de Video en este canal.", "error");
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 30, max: 30 }, width: { max: 1920 }, height: { max: 1080 } },
+      audio: false,
+    });
+  } catch (e) {
+    if ((e as Error)?.name !== "NotAllowedError") toast("No se pudo compartir la pantalla.", "error");
+    return;
+  }
+  if (!getState().voice) return stream.getTracks().forEach((t) => t.stop());
+  stopScreenTracks();
+  screenTrack = stream.getVideoTracks()[0] ?? null;
+  if (!screenTrack) return;
+  try {
+    screenTrack.contentHint = "detail"; // que el texto se lea bien
+  } catch {}
+  screenTrack.onended = () => void stopScreenShare(); // "Dejar de compartir" del navegador
+  for (const p of peers.values()) await plugScreen(p);
+  setState({ localScreen: stream });
+  retrackPresence();
+}
+
+function stopScreenTracks() {
+  getState().localScreen?.getTracks().forEach((t) => t.stop());
+  screenTrack = null;
+}
+
+export async function stopScreenShare() {
+  if (!getState().localScreen && !screenTrack) return;
+  stopScreenTracks();
+  for (const p of peers.values()) await plugScreen(p);
+  setState({ localScreen: null });
+  retrackPresence();
 }
 
 /** Mover a alguien (o a un bot) a otro canal de voz. Necesita administrar canales. */

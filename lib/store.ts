@@ -54,6 +54,8 @@ export type State = {
   voice: { channelId: string; serverId: string; status: "connecting" | "connected" } | null;
   micMuted: boolean;
   voiceIn: Record<string, VoiceState>; // userId -> canal de voz donde está (de la presencia)
+  screens: Record<string, MediaStream>; // userId -> video de su pantalla que me llega
+  localScreen: MediaStream | null; // mi pantalla compartida
   speaking: Record<string, true>;
   voicePeers: Record<string, "connecting" | "connected" | "failed">;
   noiseMode: "ia" | "navegador" | "off"; // supresión de ruido del micrófono
@@ -109,6 +111,8 @@ const initial: State = {
   voice: null,
   micMuted: false,
   voiceIn: {},
+  screens: {},
+  localScreen: null,
   speaking: {},
   voicePeers: {},
   noiseMode: "ia",
@@ -348,7 +352,7 @@ async function trackPresence() {
   if (!pres) return;
   const p = myPresence();
   const v = state.voice;
-  const voice: VoiceState | undefined = v ? { ch: v.channelId, muted: state.micMuted || !state.sounds, deafened: !state.sounds } : undefined;
+  const voice: VoiceState | undefined = v ? { ch: v.channelId, muted: state.micMuted || !state.sounds, deafened: !state.sounds, ...(state.localScreen ? { screen: true } : {}) } : undefined;
   // invisible pero en un canal de voz: los de la llamada igual te tienen que ver
   if (p || voice) await pres.track({ status: p ?? "offline", voice });
   else await pres.untrack();

@@ -183,3 +183,14 @@ describe("opus en tiempo real", () => {
   });
   it("sin opus no toca nada", () => expect(tuneOpus("v=0\r\n")).toBe("v=0\r\n"));
 });
+
+import { tuneVideo } from "./opus";
+describe("video de pantalla compartida", () => {
+  const sdp = "m=video 9 UDP/TLS/RTP/SAVPF 96 97\r\na=rtpmap:96 VP8/90000\r\na=rtpmap:97 rtx/90000\r\na=fmtp:97 apt=96\r\n";
+  it("arranca con buen ancho de banda", () => {
+    const out = tuneVideo(sdp);
+    expect(out).toContain("a=rtpmap:96 VP8/90000\r\na=fmtp:96 x-google-start-bitrate=1500");
+    expect(out).toContain("a=fmtp:97 apt=96\r\n");
+    expect(tuneVideo(out)).toBe(out);
+  });
+});

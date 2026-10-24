@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { can, channelAllows, go, setBotsListen, setMicMuted, setVoiceMod, toast, setSounds, setState, useStore, voiceModOf, type State } from "@/lib/store";
 import { friendlyError } from "@/lib/chat";
 import type { Channel, Profile } from "@/lib/types";
-import { joinVoice, leaveVoice, moveMember, setNoiseMode } from "@/lib/voice";
+import { joinVoice, leaveVoice, moveMember, screenSupported, setNoiseMode, startScreenShare, stopScreenShare } from "@/lib/voice";
 import { listenSupported } from "@/lib/botListen";
 import { addTrack, pause, searchMusic, setMusicVolume, skip, stopMusic } from "@/lib/music";
 import type { MusicTrack } from "@/lib/store";
@@ -12,7 +12,7 @@ import { Icon } from "./Icon";
 import { Avatar, Menu, type MenuItem } from "./ui";
 import { BotTag } from "./Permissions";
 
-export type VoiceMember = { p: Profile; muted: boolean; deafened: boolean; srvMuted?: boolean; srvDeafened?: boolean };
+export type VoiceMember = { p: Profile; muted: boolean; deafened: boolean; srvMuted?: boolean; srvDeafened?: boolean; screen?: boolean };
 
 /** Quiénes están en un canal de voz (de la presencia global). */
 export function voiceMembers(s: State, channelId: string): VoiceMember[] {
@@ -22,10 +22,13 @@ export function voiceMembers(s: State, channelId: string): VoiceMember[] {
     if (v.ch !== channelId) continue;
     const p = s.profiles[uid];
     const mod = sid ? s.voiceMods?.[sid]?.[uid] : undefined;
-    if (p) out.push({ p, muted: v.muted, deafened: v.deafened, srvMuted: !!mod?.muted, srvDeafened: !!mod?.deafened });
+    if (p) out.push({ p, muted: v.muted, deafened: v.deafened, srvMuted: !!mod?.muted, srvDeafened: !!mod?.deafened, screen: !!(v as { screen?: boolean }).screen });
   }
   // yo apenas entro, antes de que vuelva la presencia
   if (s.voice?.channelId === channelId && s.me && !out.some((m) => m.p.id === s.me!.id)) out.push({ p: s.me, muted: s.micMuted || !s.sounds, deafened: !s.sounds });
+  // mi pantalla la sé al toque, sin esperar la presencia
+  const mine = out.find((m) => m.p.id === s.me?.id);
+  if (mine && s.voice?.channelId === channelId) mine.screen = !!s.localScreen;
   return out.sort((a, b) => a.p.display_name.localeCompare(b.p.display_name));
 }
 
@@ -39,9 +42,10 @@ function useVoiceMembers(channelId: string) {
   const botVoice = useStore((s) => s.botVoice);
   const voiceMods = useStore((s) => s.voiceMods);
   const channels = useStore((s) => s.channels);
+  const localScreen = useStore((s) => s.localScreen);
   return useMemo(
-    () => voiceMembers({ voiceIn, botVoice, profiles, voice, me, micMuted, sounds, voiceMods, channels } as State, channelId),
-    [voiceIn, botVoice, profiles, voice, me, micMuted, sounds, voiceMods, channels, channelId],
+    () => voiceMembers({ voiceIn, botVoice, profiles, voice, me, micMuted, sounds, voiceMods, channels, localScreen } as State, channelId),
+    [voiceIn, botVoice, profiles, voice, me, micMuted, sounds, voiceMods, channels, localScreen, channelId],
   );
 }
 
@@ -147,6 +151,7 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
                 <Avatar p={m.p} size="xs" />
                 <span className="vc-name">{m.p.display_name}</span>
                 {m.p.is_bot && <BotTag official={m.p.is_official} />}
+                {m.screen && <span className="live-pill">EN VIVO</span>}
                 <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
               </button>
               {canMenu && (
@@ -284,6 +289,13 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
   const botsHere = members.some((m) => m.p.is_bot);
   const [musicOpen, setMusicOpen] = useState(false);
   const off = micMuted || !sounds;
+  const me = useStore((s) => s.me);
+  const screens = useStore((s) => s.screens);
+  const localScreen = useStore((s) => s.localScreen);
+  const canVideo = useStore((s) => channelAllows(s, channel.id, "video"));
+  const sharers = members.filter((m) => m.screen).map((m) => m.p);
+  const [focus, setFocus] = useState<string | null>(null);
+  const focused = sharers.find((p) => p.id === focus)?.id ?? sharers[0]?.id ?? null;
   return (
     <section className="chat vc-pane">
       <header className="chat-head">
@@ -293,9 +305,18 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
         <Icon name="speaker" className="hash" />
         <h2>{channel.name}</h2>
       </header>
-      <div className="vc-stage">
+      <div className={`vc-stage${sharers.length ? " has-screen" : ""}`}>
+        {sharers.length > 0 && (
+          <ScreenStage
+            sharers={sharers}
+            focus={focused}
+            onFocus={setFocus}
+            streamOf={(uid) => (uid === me?.id ? localScreen : screens[uid]) ?? null}
+            here={here}
+          />
+        )}
         {members.length ? (
-          <div className={`vc-grid n${Math.min(members.length, 9)}`}>
+          <div className={`vc-grid n${Math.min(members.length, 9)}${sharers.length ? " mini" : ""}`}>
             {members.map((m) => {
               const st = peers[m.p.id];
               return (
@@ -332,6 +353,18 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
               <Icon name={off ? "micOff" : "mic"} />
             </button>
             <NoiseButton className="vc-btn" />
+            {screenSupported() && (
+              <button
+                className={`vc-btn screen-btn${localScreen ? " on" : ""}`}
+                disabled={!canVideo && !localScreen}
+                onClick={() => void (localScreen ? stopScreenShare() : startScreenShare())}
+                aria-pressed={!!localScreen}
+                aria-label={localScreen ? "Dejar de compartir pantalla" : "Compartir pantalla"}
+                title={!canVideo ? "No tenés permiso de Video en este canal" : localScreen ? "Dejar de compartir pantalla" : "Compartir pantalla"}
+              >
+                <Icon name={localScreen ? "screenOff" : "screen"} />
+              </button>
+            )}
             {botsHere && listenSupported() && <ListenButton />}
             <button className={`vc-btn music-btn${musicOpen ? " on" : ""}`} onClick={() => setMusicOpen((o) => !o)} aria-pressed={musicOpen} aria-label="Música" title="Música (bot Temazo)">
               <Icon name="music" />
@@ -498,5 +531,57 @@ function MusicPanel({ channelId, onClose }: { channelId: string; onClose: () => 
       </footer>
       <p className="hint music-help">También desde el chat: !play tema · !skip · !pausa · !sigue · !stop · !cola</p>
     </aside>
+  );
+}
+
+/** Video de una pantalla compartida (siempre sin sonido: el audio va por la voz). */
+function ScreenVideo({ stream }: { stream: MediaStream | null }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = stream;
+  }, [stream]);
+  return <video ref={ref} autoPlay playsInline muted />;
+}
+
+/** Transmisiones en vivo del canal: la elegida en grande y las demás para cambiar. */
+function ScreenStage({ sharers, focus, onFocus, streamOf, here }: { sharers: Profile[]; focus: string | null; onFocus: (id: string) => void; streamOf: (uid: string) => MediaStream | null; here: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const main = sharers.find((p) => p.id === focus) ?? sharers[0];
+  const stream = main ? streamOf(main.id) : null;
+  if (!main) return null;
+  return (
+    <div className="screen-stage">
+      <div className="screen-main" ref={box}>
+        {!here ? (
+          <div className="screen-wait">Entrá a la voz para ver la transmisión de {main.display_name}.</div>
+        ) : stream ? (
+          <ScreenVideo stream={stream} />
+        ) : (
+          <div className="screen-wait">Conectando con la transmisión…</div>
+        )}
+        <span className="screen-label">
+          <span className="live-pill">EN VIVO</span> {main.display_name}
+        </span>
+        {here && stream && (
+          <button
+            className="icon-btn screen-full"
+            onClick={() => (document.fullscreenElement ? void document.exitFullscreen() : void box.current?.requestFullscreen?.())}
+            aria-label="Pantalla completa"
+            title="Pantalla completa"
+          >
+            <Icon name="expand" />
+          </button>
+        )}
+      </div>
+      {sharers.length > 1 && (
+        <div className="screen-thumbs">
+          {sharers.map((p) => (
+            <button key={p.id} className={p.id === main.id ? "on" : ""} onClick={() => onFocus(p.id)}>
+              <span className="live-pill">EN VIVO</span> {p.display_name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
