@@ -925,11 +925,27 @@ function stopRealtime() {
   stopPresence();
 }
 
+const pendingNew = new Set<string>();
 function onMessageInsert(m: Message) {
   m = { ...m, attachments: m.attachments ?? [], mentions: m.mentions ?? [] };
   const me = meId();
   const ch = state.channels[m.channel_id];
-  if (!ch) return reloadSoon(); // DM nuevo que me abrieron
+  if (!ch) {
+    // DM nuevo que me abrieron (ej. un bot que te escribe primero): cargo y después aviso como cualquier mensaje
+    if (!pendingNew.has(m.channel_id)) {
+      pendingNew.add(m.channel_id);
+      void loadAll()
+        .then(() => {
+          // el contador de no leídos ya viene de loadAll: acá solo el aviso y el sonido
+          if (!state.channels[m.channel_id] || m.author_id === meId()) return;
+          void ensureProfiles([m.author_id]);
+          notify(m);
+          if (state.sounds && state.me?.status !== "dnd") ping();
+        })
+        .finally(() => pendingNew.delete(m.channel_id));
+    }
+    return;
+  }
   setState((s) => ({ channels: { ...s.channels, [ch.id]: { ...ch, last_message_at: m.created_at } } }));
   const cm = state.messages[m.channel_id];
   if (cm) setChannelMessages(m.channel_id, { list: upsertMessage(cm.list, m) });
