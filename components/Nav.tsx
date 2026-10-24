@@ -68,7 +68,7 @@ export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void
               aria-label={`${s.name}${u.mentions ? `, ${u.mentions} menciones` : u.unread ? ", mensajes sin leer" : ""}`}
               title={s.name}
             >
-              {initialsOf(s.name)}
+              {s.icon_url ? <img className="rail-icon" src={s.icon_url} alt="" draggable={false} /> : initialsOf(s.name)}
             </button>
             {u.mentions > 0 && <span className="badge">{u.mentions}</span>}
           </div>

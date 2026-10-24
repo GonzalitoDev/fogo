@@ -1,6 +1,7 @@
 "use client";
 
 import { BadgeRow } from "./Badges";
+import { Name } from "./Name";
 import { BotTag } from "./Permissions";
 
 import { memo, useEffect, useRef, useState } from "react";
@@ -171,7 +172,7 @@ function MessageView(p: Props) {
         {p.head && (
           <div className="meta">
             <button className="author" style={{ ["--c" as string]: p.authorColor ?? "var(--ink)" }} onClick={(e) => p.author && p.onAuthor(p.author, { x: e.clientX, y: e.clientY })}>
-              {p.author?.display_name ?? "…"}
+              <Name p={p.author} />
             </button>
             {p.author?.is_bot && <BotTag />}
             <BadgeRow p={p.author} />

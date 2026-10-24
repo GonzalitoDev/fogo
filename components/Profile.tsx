@@ -17,6 +17,7 @@ import {
 } from "@/lib/store";
 import type { Presence, Profile } from "@/lib/types";
 import { BadgeIcon, useBadges } from "./Badges";
+import { Name } from "./Name";
 import { BotTag } from "./Permissions";
 import { Ember, Icon } from "./Icon";
 import { Avatar, Modal, STATUS_LABEL, useEscape } from "./ui";
@@ -84,6 +85,7 @@ export function ProfileView({
 
   return (
     <div className={`pv pv-${variant}${themed ? " themed" : ""}`} style={profileStyle(p)}>
+      {p.premium && p.profile_effect && <div className={`pv-effect fx-${p.profile_effect}`} aria-hidden="true" />}
       <div className={"pv-banner" + (banner ? " img" : "")}>{banner && <img src={banner} alt="" />}</div>
       <div className="pv-top">
         <span className="pv-avatar">
@@ -107,7 +109,7 @@ export function ProfileView({
       <div className="pv-inner">
         <div className="pv-names">
           <h2>
-            {p.display_name} {p.is_bot && <BotTag />}
+            <Name p={p} /> {p.is_bot && <BotTag />}
           </h2>
           <div className="pv-handle">
             <span>{p.username}</span>

@@ -5,6 +5,7 @@ import { can, fail, kickMember, nameColor, openDm, presenceOf, rolesOf, topPosit
 import type { Profile, Role, Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { MemberRolesDialog } from "./Roles";
+import { Name } from "./Name";
 import { Avatar, Confirm, type MenuItem } from "./ui";
 import { BadgeRow } from "./Badges";
 import { ProfilePopout } from "./Profile";
@@ -74,8 +75,8 @@ export function MemberList({ server }: { server: Server }) {
                 <Avatar p={p} size="sm" status={presenceOf(state, p.id)} />
                 <span className="member-text">
                   <span className="member-line">
-                    <span className="nm" style={{ color: nameColor(state, server.id, p.id) }}>
-                      {p.display_name}
+                    <span className="nm">
+                      <Name p={p} color={nameColor(state, server.id, p.id)} />
                     </span>
                     {p.is_bot && <BotTag />}
                     {p.id === server.owner_id && (

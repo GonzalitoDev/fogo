@@ -11,6 +11,10 @@ import { RolesDialog } from "./Roles";
 import { BansDialog } from "./Moderation";
 import { Avatar, InlineModal, useEscape } from "./ui";
 import { setNoiseMode, startMicTest, type MicTest, type NoiseMode } from "@/lib/voice";
+import { applyAppTheme, DECOS, EFFECTS, NAME_STYLES, THEMES } from "@/lib/premium";
+import { ProfileView } from "./Profile";
+import { getState, updateProfile, type ProfilePatch } from "@/lib/store";
+import type { Profile } from "@/lib/types";
 
 type Section = { id: string; label: string; danger?: boolean } | { group: string };
 
@@ -96,6 +100,8 @@ function UserSettings({ section }: { section: string }) {
     { id: "account", label: "Mi cuenta" },
     { id: "profiles", label: "Perfiles" },
     { id: "privacy", label: "Privacidad y seguridad" },
+    { group: "Fogón Premium" },
+    { id: "premium", label: "Premium ✨" },
     { group: "Ajustes de la aplicación" },
     { id: "appearance", label: "Apariencia" },
     { id: "voice", label: "Voz" },
@@ -125,6 +131,7 @@ function UserSettings({ section }: { section: string }) {
         </>
       )}
       {section === "privacy" && <Privacy />}
+      {section === "premium" && <PremiumSettings />}
       {section === "appearance" && <Appearance />}
       {section === "voice" && <VoiceSettings />}
       {section === "notifications" && <Notifications />}
@@ -330,6 +337,175 @@ function Notifications() {
           <span />
         </label>
       </div>
+    </>
+  );
+}
+
+/* ---------- Fogón Premium ---------- */
+
+const PERKS = [
+  ["✨", "Nombre con estilo", "Degradé, brillo o arcoíris, con tus colores."],
+  ["🔥", "Decoraciones de avatar", "Un marco animado alrededor de tu foto."],
+  ["🎆", "Efectos de perfil", "Chispas, brasas, nieve y más cuando abren tu perfil."],
+  ["🎨", "Temas de la app", "Cambiá los colores de todo Fogón y el color de acento."],
+  ["💎", "Insignia Premium", "Para que todos sepan."],
+] as const;
+
+function PremiumSettings() {
+  const me = useStore((s) => s.me)!;
+  const [draft, setDraft] = useState<ProfilePatch>({});
+  const [busy, setBusy] = useState(false);
+  const view: Profile = { ...me, ...draft };
+  const dirty = Object.keys(draft).length > 0;
+  const set = (patch: ProfilePatch) => setDraft((d) => ({ ...d, ...patch }));
+
+  // el tema se ve al toque; si no guardás, vuelve el que tenías
+  useEffect(() => {
+    applyAppTheme(view);
+  }, [view.app_theme, view.app_accent]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => applyAppTheme(getState().me), []);
+
+  if (!me.premium) {
+    return (
+      <>
+        <h1>Fogón Premium</h1>
+        <div className="prem-hero">
+          <b>💎 Fogón Premium</b>
+          <p>Tuneá Fogón a tu gusto.</p>
+        </div>
+        <div className="prem-perks">
+          {PERKS.map(([i, t, d]) => (
+            <div key={t}>
+              <span>{i}</span>
+              <b>{t}</b>
+              <p className="hint">{d}</p>
+            </div>
+          ))}
+        </div>
+        <p className="hint">Todavía no tenés Premium. Por ahora lo da el equipo de Fogón.</p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h1>Fogón Premium</h1>
+      <div className="prem-hero on">
+        <b>💎 Tenés Fogón Premium</b>
+        <p>Todo lo de acá lo ven los demás (menos el tema de la app, que es tuyo).</p>
+      </div>
+      <div className="prem-grid">
+        <div className="prem-controls">
+          <h3 className="settings-sub">Estilo del nombre</h3>
+          <div className="chips" role="radiogroup" aria-label="Estilo del nombre">
+            <button type="button" role="radio" aria-checked={!view.name_style} className={!view.name_style ? "on" : ""} onClick={() => set({ name_style: null })}>
+              Normal
+            </button>
+            {NAME_STYLES.map((n) => (
+              <button key={n.id} type="button" role="radio" aria-checked={view.name_style === n.id} className={view.name_style === n.id ? "on" : ""} onClick={() => set({ name_style: n.id })}>
+                {n.label}
+              </button>
+            ))}
+          </div>
+          {view.name_style && view.name_style !== "arcoiris" && (
+            <div className="prem-colors">
+              <label>
+                Color 1 <input type="color" value={view.name_c1 || view.color} onChange={(e) => set({ name_c1: e.target.value })} />
+              </label>
+              {view.name_style === "gradiente" && (
+                <label>
+                  Color 2 <input type="color" value={view.name_c2 || "#ffffff"} onChange={(e) => set({ name_c2: e.target.value })} />
+                </label>
+              )}
+            </div>
+          )}
+
+          <h3 className="settings-sub">Decoración del avatar</h3>
+          <div className="prem-tiles">
+            <button type="button" className={!view.avatar_deco ? "on" : ""} onClick={() => set({ avatar_deco: null })}>
+              <Avatar p={{ ...view, avatar_deco: null }} size="lg" />
+              <span>Ninguna</span>
+            </button>
+            {DECOS.map((d) => (
+              <button key={d.id} type="button" className={view.avatar_deco === d.id ? "on" : ""} onClick={() => set({ avatar_deco: d.id })}>
+                <Avatar p={{ ...view, avatar_deco: d.id }} size="lg" />
+                <span>{d.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <h3 className="settings-sub">Efecto del perfil</h3>
+          <div className="prem-tiles fx">
+            <button type="button" className={!view.profile_effect ? "on" : ""} onClick={() => set({ profile_effect: null })}>
+              <span className="fx-sample" />
+              <span>Ninguno</span>
+            </button>
+            {EFFECTS.map((f) => (
+              <button key={f.id} type="button" className={view.profile_effect === f.id ? "on" : ""} onClick={() => set({ profile_effect: f.id })}>
+                <span className="fx-sample">
+                  <span className={`pv-effect fx-${f.id}`} />
+                </span>
+                <span>{f.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <h3 className="settings-sub">Tema de la app</h3>
+          <div className="prem-themes">
+            <button type="button" className={!view.app_theme ? "on" : ""} onClick={() => set({ app_theme: null })} title="Predeterminado">
+              <span className="sw" style={{ background: "linear-gradient(135deg, #1e1f22, #313338)" }} />
+              <span>Clásico</span>
+            </button>
+            {THEMES.map((t) => (
+              <button key={t.id} type="button" className={view.app_theme === t.id ? "on" : ""} onClick={() => set({ app_theme: t.id })}>
+                <span className="sw" style={{ background: `${t.grad}, linear-gradient(135deg, ${t.rail}, ${t.chat})`, boxShadow: `inset 0 -6px 0 ${t.accent}` }} />
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="prem-colors">
+            <label>
+              Color de acento <input type="color" value={view.app_accent || THEMES.find((t) => t.id === view.app_theme)?.accent || "#5865f2"} onChange={(e) => set({ app_accent: e.target.value })} />
+            </label>
+            {view.app_accent && (
+              <button type="button" className="link-btn" onClick={() => set({ app_accent: null })}>
+                Usar el del tema
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="prem-preview">
+          <h3 className="settings-sub">Vista previa</h3>
+          <ProfileView p={view} variant="preview" />
+        </div>
+      </div>
+      {dirty && (
+        <div className="save-bar">
+          <span>¡Cuidado! Tenés cambios sin guardar.</span>
+          <button className="link-btn" onClick={() => setDraft({})}>
+            Restablecer
+          </button>
+          <button
+            className="btn"
+            style={{ background: "#248046", color: "#fff" }}
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await updateProfile(draft);
+                setDraft({});
+                toast("Listo, guardado ✨");
+              } catch (e) {
+                fail(e);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Guardar cambios
+          </button>
+        </div>
+      )}
     </>
   );
 }

@@ -14,6 +14,7 @@ import {
   openDm,
   renameServer,
   resetInvite,
+  setServerIcon,
   saveChannel,
   can,
   toast,
@@ -245,6 +246,51 @@ export function InviteAcceptDialog({ code, onClose }: { code: string; onClose: (
   );
 }
 
+function ServerIconPicker({ server }: { server: Server }) {
+  const live = useStore((s) => s.servers[server.id]) ?? server;
+  const [busy, setBusy] = useState(false);
+  const pick = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      setBusy(true);
+      try {
+        await setServerIcon(server.id, f);
+        toast("Logo actualizado");
+      } catch (e) {
+        toast(friendlyError(e), "error");
+      } finally {
+        setBusy(false);
+      }
+    };
+    input.click();
+  };
+  return (
+    <div className="server-icon-pick">
+      <span className="server-icon-prev" aria-hidden="true">
+        {live.icon_url ? <img src={live.icon_url} alt="" /> : live.name.split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w[0]).join("").toUpperCase()}
+      </span>
+      <div>
+        <b>Logo del servidor</b>
+        <p className="hint">Se ve en la barra de la izquierda. Una imagen cuadrada queda mejor (mínimo 128×128).</p>
+        <div className="row-btns">
+          <button type="button" className="btn primary" disabled={busy} onClick={pick}>
+            {busy ? "Subiendo…" : "Subir logo"}
+          </button>
+          {live.icon_url && (
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void setServerIcon(server.id, null).catch((e) => toast(friendlyError(e), "error"))}>
+              Quitar
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ServerSettingsDialog({ server, onClose }: { server: Server; onClose: () => void }) {
   const isOwner = useStore((s) => s.me?.id === server.owner_id);
   const [name, setName] = useState(server.name);
@@ -269,6 +315,7 @@ export function ServerSettingsDialog({ server, onClose }: { server: Server; onCl
         }}
       >
         <h2>Ajustes del servidor</h2>
+        <ServerIconPicker server={server} />
         <label className="field">
           <span>Nombre</span>
           <input id="server-rename" className="input" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />

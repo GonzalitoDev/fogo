@@ -124,7 +124,7 @@ export function fail(e: unknown) {
   toast(friendlyError(e), "error");
 }
 
-export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status,is_bot";
+export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status,is_bot,premium,name_style,name_c1,name_c2,avatar_deco,profile_effect,app_theme,app_accent";
 const meId = () => state.session?.user.id ?? "";
 
 /* ---------- lugar actual (en el hash para que sobreviva a recargar) ---------- */
@@ -240,7 +240,13 @@ export async function createProfile(username: string, displayName: string, color
   await onSession(state.session);
 }
 
-export type ProfilePatch = Partial<Pick<Profile, "display_name" | "color" | "bio" | "pronouns" | "banner_color" | "theme_top" | "theme_bottom" | "avatar_path" | "banner_path" | "status" | "custom_status">>;
+export type ProfilePatch = Partial<
+  Pick<
+    Profile,
+    | "display_name" | "color" | "bio" | "pronouns" | "banner_color" | "theme_top" | "theme_bottom" | "avatar_path" | "banner_path" | "status" | "custom_status"
+    | "name_style" | "name_c1" | "name_c2" | "avatar_deco" | "profile_effect" | "app_theme" | "app_accent"
+  >
+>;
 
 export async function updateProfile(patch: ProfilePatch) {
   const clean: ProfilePatch = { ...patch };
@@ -784,6 +790,23 @@ export async function resetInvite(serverId: string) {
   const { data, error } = await supabase.rpc("fogon_reset_invite", { p_server: serverId });
   if (error) throw error;
   setState((s) => ({ servers: { ...s.servers, [serverId]: { ...s.servers[serverId], invite_code: data as string } } }));
+}
+
+/** Sube el logo del servidor (a la carpeta de quien lo sube) y lo guarda. */
+export async function setServerIcon(serverId: string, file: File | null) {
+  let url: string | null = null;
+  if (file) {
+    if (!file.type.startsWith("image/")) throw new Error("Tiene que ser una imagen.");
+    const blob = await shrink(file, 256, 256);
+    const ext = blob.type === "image/gif" ? "gif" : "webp";
+    const path = `${meId()}/server-${serverId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from(MEDIA_BUCKET).upload(path, blob, { contentType: blob.type, cacheControl: "31536000" });
+    if (error) throw error;
+    url = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
+  }
+  const { data, error } = await supabase.from("fogon_servers").update({ icon_url: url }).eq("id", serverId).select("*").single();
+  if (error) throw error;
+  setState((s) => ({ servers: { ...s.servers, [serverId]: data as Server } }));
 }
 
 export async function renameServer(serverId: string, name: string) {

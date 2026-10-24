@@ -26,6 +26,7 @@ import { FriendsPage } from "@/components/Friends";
 import { loadFont, SettingsScreen } from "@/components/Settings";
 import { BansDialog } from "@/components/Moderation";
 import { VoicePane } from "@/components/Voice";
+import { applyAppTheme } from "@/lib/premium";
 
 type Dialog =
   | { kind: "create" }
@@ -52,6 +53,9 @@ export default function Page() {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [membersOpen, setMembersOpen] = useState(true);
+
+  // tema de la app (Fogón Premium)
+  useEffect(() => applyAppTheme(me), [me?.premium, me?.app_theme, me?.app_accent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (configured) void boot();

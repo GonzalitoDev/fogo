@@ -14,6 +14,7 @@ export function Avatar({ p, size = "md", status, src: override }: { p?: Profile 
   return (
     <span className={`avatar ${size === "md" ? "" : size}${src && !broken ? " has-img" : ""}`} style={{ ["--c" as string]: p?.color ?? "#6b7b77" }} aria-hidden="true">
       {src && !broken ? <img src={src} alt="" draggable={false} onError={() => setBroken(true)} /> : initials(p?.display_name ?? "?")}
+      {p?.premium && p.avatar_deco && size !== "xs" && <span className={`deco deco-${p.avatar_deco}`} aria-hidden="true" />}
       {status && <span className={`status-dot s-${status}`} title={STATUS_LABEL[status]} />}
     </span>
   );

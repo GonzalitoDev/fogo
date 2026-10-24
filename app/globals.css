@@ -1109,3 +1109,89 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .vc-caption { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.75); color: #fff; font-size: 14px; line-height: 1.3; text-align: center; animation: caption-in 0.15s ease-out; }
 @keyframes caption-in { from { opacity: 0; transform: translate(-50%, 4px); } }
 .vc-btn.listen-btn.on { background: #5865f2; color: #fff; }
+
+/* ---------- Fogón Premium ---------- */
+/* nombre */
+.uname.nm-gradiente { background: linear-gradient(90deg, var(--n1), var(--n2)); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
+.uname.nm-brillo { color: var(--n1) !important; text-shadow: 0 0 6px color-mix(in srgb, var(--n1) 70%, transparent), 0 0 14px color-mix(in srgb, var(--n1) 40%, transparent); }
+.uname.nm-arcoiris { background: linear-gradient(90deg, #ff5f6d, #ffc371, #f9f871, #6ee7b7, #60a5fa, #c084fc, #ff5f6d); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: nm-rainbow 4s linear infinite; }
+@keyframes nm-rainbow { to { background-position: 200% 0; } }
+.author .uname, .nm .uname { font-weight: inherit; }
+
+/* decoración del avatar: un aro por encima, sin tapar la foto */
+.avatar .deco { position: absolute; inset: -14%; border-radius: 50%; pointer-events: none; z-index: 1; }
+.avatar .deco::before, .avatar .deco::after { content: ""; position: absolute; }
+.deco-fuego { background: conic-gradient(from 0deg, #ff4d1f, #ffc24a, #ff8a2a, #ff4d1f, #ffd166, #ff4d1f); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px)); mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px)); animation: deco-spin 3s linear infinite; filter: drop-shadow(0 0 3px #ff7a2a); }
+.deco-neon { border: 3px solid #4ff; box-shadow: 0 0 6px #4ff, 0 0 14px #f4f, inset 0 0 6px #f4f; animation: deco-pulse 1.6s ease-in-out infinite; }
+.deco-corona::after { content: "👑"; top: -32%; left: 50%; transform: translateX(-50%) rotate(-8deg); font-size: 46%; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+.deco-corona { border: 2px solid #f5c542; box-shadow: 0 0 8px rgba(245, 197, 66, 0.6); }
+.deco-corazones::before { content: "💖"; top: -12%; right: -6%; font-size: 34%; animation: deco-float 2s ease-in-out infinite; }
+.deco-corazones::after { content: "💕"; bottom: -6%; left: -8%; font-size: 30%; animation: deco-float 2s ease-in-out infinite 1s; }
+.deco-corazones { border: 2px solid #ff6fb5; }
+.deco-estrellas { border: 2px dashed #ffd166; animation: deco-spin 8s linear infinite; }
+.deco-estrellas::before { content: "✦"; color: #fff6c2; top: -10%; left: 12%; font-size: 30%; text-shadow: 0 0 4px #ffd166; }
+.deco-estrellas::after { content: "✦"; color: #fff6c2; bottom: -8%; right: 10%; font-size: 24%; text-shadow: 0 0 4px #ffd166; }
+.deco-hojas { border: 3px solid #4f9d69; }
+.deco-hojas::before { content: "🍃"; top: -16%; left: -8%; font-size: 36%; transform: rotate(-30deg); }
+.deco-hojas::after { content: "🌿"; bottom: -12%; right: -10%; font-size: 36%; }
+@keyframes deco-spin { to { transform: rotate(360deg); } }
+@keyframes deco-pulse { 50% { box-shadow: 0 0 10px #4ff, 0 0 22px #f4f, inset 0 0 8px #f4f; } }
+@keyframes deco-float { 50% { transform: translateY(-3px); } }
+.avatar .status-dot { z-index: 2; }
+
+/* efecto del perfil: partículas dibujadas con degradés, animadas */
+.pv { position: relative; }
+.pv-effect { position: absolute; inset: 0; pointer-events: none; z-index: 3; border-radius: inherit; overflow: hidden; background-repeat: repeat; animation: fx-fall 6s linear infinite; opacity: 0.9; }
+.fx-chispas { background-image: radial-gradient(2px 2px at 20px 30px, #fff6c2, transparent), radial-gradient(1.5px 1.5px at 80px 70px, #ffd166, transparent), radial-gradient(2px 2px at 140px 20px, #fff, transparent), radial-gradient(1px 1px at 200px 90px, #ffe08a, transparent); background-size: 240px 120px; animation: fx-twinkle 2.4s ease-in-out infinite, fx-fall 9s linear infinite; }
+.fx-brasas { background-image: radial-gradient(2.5px 2.5px at 30px 110px, #ff7a2a, transparent), radial-gradient(2px 2px at 110px 60px, #ffb03a, transparent), radial-gradient(1.5px 1.5px at 180px 100px, #ff4d1f, transparent), radial-gradient(2px 2px at 220px 30px, #ffd166, transparent); background-size: 250px 130px; animation: fx-rise 5s linear infinite; filter: drop-shadow(0 0 2px #ff7a2a); }
+.fx-nieve { background-image: radial-gradient(3px 3px at 20px 20px, #fff, transparent), radial-gradient(2px 2px at 90px 60px, #fff, transparent), radial-gradient(2.5px 2.5px at 160px 30px, #e8f4ff, transparent), radial-gradient(1.5px 1.5px at 210px 90px, #fff, transparent); background-size: 240px 120px; }
+.fx-corazones::before, .fx-corazones::after { content: "💗   💕     💖   💗      💕"; position: absolute; left: 0; right: 0; white-space: pre; font-size: 14px; letter-spacing: 6px; animation: fx-rise-el 6s linear infinite; }
+.fx-corazones::after { animation-delay: -3s; left: 30px; }
+.fx-estrellas { background-image: radial-gradient(1.5px 1.5px at 15px 25px, #fff, transparent), radial-gradient(1px 1px at 70px 80px, #cfe3ff, transparent), radial-gradient(2px 2px at 130px 40px, #fff6c2, transparent), radial-gradient(1px 1px at 190px 100px, #fff, transparent), radial-gradient(1.5px 1.5px at 230px 15px, #e0d0ff, transparent); background-size: 250px 120px; animation: fx-twinkle 3s ease-in-out infinite; }
+@keyframes fx-fall { from { background-position: 0 0; } to { background-position: 0 240px; } }
+@keyframes fx-rise { from { background-position: 0 0; } to { background-position: 30px -260px; } }
+@keyframes fx-twinkle { 50% { opacity: 0.45; } }
+@keyframes fx-rise-el { from { transform: translateY(110%); } to { transform: translateY(-120%); } }
+@media (prefers-reduced-motion: reduce) { .pv-effect, .avatar .deco, .uname.nm-arcoiris { animation: none !important; } }
+
+/* tema de la app: degradé suave sobre el chat */
+.chat { background-image: var(--chat-grad, none); background-attachment: local; }
+
+/* logos de servidor */
+.rail-btn .rail-icon { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+.rail-btn:has(.rail-icon) { padding: 0; overflow: hidden; background: transparent; }
+.server-icon-pick { display: flex; gap: 16px; align-items: center; }
+.server-icon-prev { width: 80px; height: 80px; flex: none; border-radius: 50%; overflow: hidden; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 24px; font-weight: 600; }
+.server-icon-prev img { width: 100%; height: 100%; object-fit: cover; }
+.server-icon-pick p { margin: 4px 0 8px; }
+.row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ajustes de Premium */
+.prem-hero { border-radius: 12px; padding: 20px; background: linear-gradient(120deg, #5865f2, #eb459e 60%, #ff8a3d); color: #fff; margin-bottom: 16px; }
+.prem-hero b { font-size: 20px; display: block; }
+.prem-hero p { margin: 4px 0 0; opacity: 0.9; }
+.prem-perks { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.prem-perks > div { background: var(--side); border-radius: 8px; padding: 12px; display: grid; gap: 2px; }
+.prem-perks > div > span { font-size: 22px; }
+.prem-perks b { color: var(--ink-strong); }
+.prem-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.prem-preview { position: sticky; top: 0; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chips button { border: 1px solid var(--line); background: var(--side); color: var(--ink); padding: 6px 14px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer; }
+.chips button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 25%, var(--side)); color: #fff; }
+.prem-colors { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 10px; color: var(--ink-2); font-size: 14px; }
+.prem-colors label { display: flex; align-items: center; gap: 8px; }
+.prem-colors input[type="color"] { width: 36px; height: 28px; border: 0; padding: 0; background: none; cursor: pointer; }
+.prem-tiles, .prem-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.prem-tiles button, .prem-themes button { border: 2px solid transparent; background: var(--side); border-radius: 10px; padding: 14px 6px 8px; display: grid; justify-items: center; gap: 8px; color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; }
+.prem-tiles button.on, .prem-themes button.on { border-color: var(--accent); color: var(--ink-strong); }
+.prem-tiles .avatar { --ring: var(--side); }
+.fx-sample { position: relative; width: 72px; height: 56px; border-radius: 8px; background: var(--rail); overflow: hidden; display: block; }
+.prem-themes .sw { width: 72px; height: 48px; border-radius: 8px; display: block; }
+.save-bar { position: sticky; bottom: 12px; margin-top: 20px; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; border-radius: 8px; background: var(--rail); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
+.save-bar span { flex: 1; color: var(--ink-strong); font-weight: 500; }
+@media (max-width: 760px) {
+  .prem-grid { grid-template-columns: minmax(0, 1fr); }
+  .prem-preview { position: static; order: -1; }
+  .save-bar { flex-wrap: wrap; }
+}

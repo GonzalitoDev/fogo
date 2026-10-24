@@ -15,6 +15,7 @@ const SHAPES: Record<BadgeId, React.ReactNode> = {
   artista: <path d="M8 1.8c3.4 0 6.2 2.4 6.2 5.3 0 1.7-1.4 3-3.1 3H9.8c-.6 0-1 .5-1 1 0 .3.1.5.3.7.2.2.3.5.3.8 0 .6-.5 1.1-1.2 1.1-3.4 0-6.2-2.8-6.2-6.2S4.6 1.8 8 1.8ZM4.8 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm2-2.7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm3.2 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm2 2.6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />,
   vip: <path d="M8 1.5 9.9 5.6l4.5.5-3.3 3 .9 4.4L8 11.3l-4 2.2.9-4.4-3.3-3 4.5-.5L8 1.5Z" />,
   embajador: <path d="M8 1.5 9.6 4.7l3.5.5-2.5 2.5.6 3.5L8 9.5l-3.2 1.7.6-3.5-2.5-2.5 3.5-.5L8 1.5ZM5.2 12.2 8 10.8l2.8 1.4.6 3.3L8 13.9l-3.4 1.6.6-3.3Z" />,
+  premium: <path d="M4.5 2.5h7L14 6l-6 7.5L2 6l2.5-3.5Zm1 1.2L4 6h2.4l1-2.3H5.5Zm3.1 0 1 2.3H12l-1.5-2.3H8.6Zm-.6.4L7.1 6h1.8L8 4.1ZM4.1 7.2l2.8 3.5-1-3.5H4.1Zm3 0L8 10.6l.9-3.4H7.1Zm3 0-1 3.5 2.8-3.5h-1.8Z" />,
   pionero: <path d="M8 1.5c.6 1.9 2.6 2.7 2.6 5.4 0 .9-.3 1.6-.7 2.1.9-.2 1.6-.9 1.9-1.8.7.9 1.2 2 1.2 3.2A5 5 0 0 1 8 15a5 5 0 0 1-5-4.6c0-2.6 1.9-3.5 2.4-5.4.6.8.8 1.6.7 2.6C7.4 6.6 8.3 4.6 8 1.5Z" />,
 };
 
@@ -31,7 +32,7 @@ export function BadgeIcon({ id, size = 16 }: { id: BadgeId; size?: number }) {
 
 export function useBadges(p?: Profile | null) {
   const granted = useStore((s) => (p ? s.badges[p.id] : undefined));
-  return p ? badgesFor(granted, p.created_at) : [];
+  return p ? badgesFor(granted, p.created_at, p.premium) : [];
 }
 
 /** Fila chica al lado del nombre (mensajes, miembros). */

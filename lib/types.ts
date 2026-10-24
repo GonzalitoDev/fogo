@@ -14,6 +14,14 @@ export type Profile = {
   status?: Status;
   custom_status?: string;
   is_bot?: boolean;
+  premium?: boolean;
+  name_style?: "gradiente" | "brillo" | "arcoiris" | null;
+  name_c1?: string | null;
+  name_c2?: string | null;
+  avatar_deco?: "fuego" | "corona" | "neon" | "corazones" | "estrellas" | "hojas" | null;
+  profile_effect?: "chispas" | "nieve" | "corazones" | "brasas" | "estrellas" | null;
+  app_theme?: "medianoche" | "atardecer" | "aurora" | "fogon" | "rosa" | "oceano" | "bosque" | null;
+  app_accent?: string | null;
 };
 
 export type Status = "online" | "idle" | "dnd" | "invisible";
@@ -25,6 +33,7 @@ export type Server = {
   owner_id: string;
   invite_code: string;
   created_at: string;
+  icon_url?: string | null;
 };
 
 export type ChannelKind = "text" | "category" | "dm" | "voice";
