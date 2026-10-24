@@ -12,6 +12,7 @@ import {
   sendMessage,
   banAccount,
   setBadge,
+  setStaff,
   setState,
   toast,
   unbanAccount,
@@ -205,6 +206,7 @@ function AdminBadges({ p }: { p: Profile }) {
       </h3>
       {open && (
         <div className="badge-edit">
+          {!p.is_bot && <AdminStaff p={p} />}
           {!p.is_bot && (
             <div className="admin-premium">
               <span>
@@ -234,8 +236,48 @@ function AdminBadges({ p }: { p: Profile }) {
   );
 }
 
-/** Dueño de Fogón: el único que puede banear cuentas. */
+/** Dueño de Fogón: el único que puede banear cuentas y armar el equipo. */
 const OWNER_ID = "e7809edc-8559-4df6-8d2b-1fffc7a27719";
+
+/** Equipo de Fogón: gonza suma o saca gente; en su propio perfil ve quiénes están. */
+function AdminStaff({ p }: { p: Profile }) {
+  const meId = useStore((s) => s.me?.id);
+  const staffIds = useStore((s) => s.staffIds);
+  const profiles = useStore((s) => s.profiles);
+  const [busy, setBusy] = useState(false);
+  if (meId !== OWNER_ID) return null;
+  if (p.id === OWNER_ID) {
+    const team = staffIds.filter((id) => id !== OWNER_ID && profiles[id]);
+    return (
+      <div className="admin-premium staff-list">
+        <span>🛡️ Equipo de Fogón</span>
+        <span className="staff-names">{team.length ? team.map((id) => `@${profiles[id].username}`).join(", ") : "Solo vos por ahora"}</span>
+      </div>
+    );
+  }
+  const on = staffIds.includes(p.id);
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await setStaff(p.id, !on);
+      toast(on ? `Sacaste a @${p.username} del Equipo de Fogón` : `🛡️ @${p.username} ahora es parte del Equipo de Fogón`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="admin-premium">
+      <span>
+        🛡️ Equipo de Fogón <b className={on ? "on staff" : ""}>{on ? "Es parte" : "No es parte"}</b>
+      </span>
+      <button className={`btn ${on ? "danger" : "primary"} sm`} disabled={busy} onClick={() => void toggle()}>
+        {busy ? "…" : on ? "Sacar del equipo" : "Sumar al equipo"}
+      </button>
+    </div>
+  );
+}
 
 /** Ban permanente de la cuenta en toda la plataforma (solo admins de Fogón). */
 function AdminBan({ p }: { p: Profile }) {

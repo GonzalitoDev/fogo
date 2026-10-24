@@ -1326,3 +1326,6 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .admin-ban { display: grid; gap: 6px; margin-top: 8px; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--danger) 12%, transparent); font-size: 13.5px; }
 .admin-ban .btn { height: 28px; padding: 0 10px; font-size: 13px; justify-self: start; }
 .admin-ban .ban-on { color: var(--danger); font-weight: 700; }
+.admin-premium b.on.staff { color: #f2803a; }
+.staff-list { flex-direction: column; align-items: flex-start; gap: 2px; }
+.staff-names { color: var(--ink-2); font-size: 13px; }

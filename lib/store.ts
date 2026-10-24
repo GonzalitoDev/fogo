@@ -35,6 +35,7 @@ export type State = {
   badges: Record<string, string[]>; // userId -> insignias dadas a mano
   boosts: Boost[]; // boosts de servidor (cuentas Premium)
   isAdmin: boolean;
+  staffIds: string[]; // Equipo de Fogón (admins de la plataforma)
   presence: Record<string, Presence>; // userId -> conectado ahora (Realtime Presence)
   joined: Record<string, Record<string, string>>; // serverId -> userId -> fecha en que entró
   fullProfile: string | null; // userId del perfil completo abierto
@@ -87,6 +88,7 @@ const initial: State = {
   badges: {},
   boosts: [],
   isAdmin: false,
+  staffIds: [],
   presence: {},
   joined: {},
   fullProfile: null,
@@ -1251,6 +1253,7 @@ function startRealtime() {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_boosts" }, () => boostsSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_admins" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_account_bans" }, (p) => {
       const r = (p.new ?? {}) as { user_id?: string; reason?: string };
       if (p.eventType === "INSERT" && r.user_id === state.me?.id) return void suspend(r.reason ?? "");
@@ -1354,6 +1357,22 @@ export async function unbanAccount(userId: string) {
   await loadAccountBans();
 }
 
+/* ---------- Equipo de Fogón ---------- */
+
+export async function loadStaff() {
+  const { data, error } = await supabase.from("fogon_admins").select("user_id");
+  if (error) return console.warn(error);
+  const ids = (data ?? []).map((r) => r.user_id as string);
+  setState({ staffIds: ids });
+  void ensureProfiles(ids);
+}
+
+export async function setStaff(userId: string, on: boolean) {
+  const { error } = await supabase.rpc("fogon_set_staff", { p_user: userId, p_on: on });
+  if (error) throw error;
+  await Promise.all([loadStaff(), loadBadges()]);
+}
+
 /* ---------- boosts de servidor ---------- */
 
 export async function loadBoosts() {
@@ -1408,7 +1427,7 @@ export async function loadBadges() {
   const map: Record<string, string[]> = {};
   for (const r of b.data as { user_id: string; badge: string }[]) (map[r.user_id] ??= []).push(r.badge);
   setState({ badges: map, isAdmin: !!a.data });
-  if (a.data) void loadAccountBans();
+  if (a.data) void Promise.all([loadAccountBans(), loadStaff()]);
 }
 
 let badgeTimer: ReturnType<typeof setTimeout> | undefined;
