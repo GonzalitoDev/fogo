@@ -17,17 +17,38 @@ type Section = { id: string; label: string; danger?: boolean } | { group: string
 /** Pantalla completa con barra lateral, como los ajustes de Discord. */
 function SettingsShell({ sections, active, onPick, children, footer }: { sections: Section[]; active: string; onPick: (id: string) => void; children: React.ReactNode; footer?: React.ReactNode }) {
   const close = () => openSettings(null);
-  useEscape(close);
+  const first = sections.find((x): x is { id: string; label: string } => "id" in x)?.id;
+  // en el celu, como Discord: primero la lista de secciones y al tocar una se abre a pantalla completa
+  const [open, setOpen] = useState(active !== first);
+  const title = sections.find((x): x is { id: string; label: string } => "id" in x && x.id === active)?.label ?? "";
+  useEscape(() => (open && window.matchMedia("(max-width: 760px)").matches ? setOpen(false) : close()));
   return (
-    <div className="settings" role="dialog" aria-modal="true" aria-label="Ajustes">
+    <div className={`settings ${open ? "m-content" : "m-list"}`} role="dialog" aria-modal="true" aria-label="Ajustes">
       <nav className="settings-side" aria-label="Secciones">
+        <div className="settings-mtop">
+          <b>Ajustes</b>
+          <button onClick={close} aria-label="Cerrar ajustes">
+            <Icon name="close" />
+          </button>
+        </div>
         <div className="settings-side-in">
           {sections.map((s, i) =>
             "group" in s ? (
               <h3 key={"g" + i}>{s.group}</h3>
             ) : (
-              <button key={s.id} className={(active === s.id ? "on" : "") + (s.danger ? " danger" : "")} onClick={() => onPick(s.id)} aria-current={active === s.id ? "page" : undefined}>
+              <button
+                key={s.id}
+                className={(active === s.id ? "on" : "") + (s.danger ? " danger" : "")}
+                onClick={() => {
+                  onPick(s.id);
+                  setOpen(true);
+                }}
+                aria-current={active === s.id ? "page" : undefined}
+              >
                 {s.label}
+                <span className="settings-chev" aria-hidden="true">
+                  <Icon name="chevron" />
+                </span>
               </button>
             ),
           )}
@@ -35,6 +56,15 @@ function SettingsShell({ sections, active, onPick, children, footer }: { section
         </div>
       </nav>
       <main className="settings-main">
+        <div className="settings-mtop">
+          <button onClick={() => setOpen(false)} aria-label="Volver a los ajustes">
+            <Icon name="chevron" className="back" />
+          </button>
+          <b>{title}</b>
+          <button onClick={close} aria-label="Cerrar ajustes">
+            <Icon name="close" />
+          </button>
+        </div>
         <div className="settings-content">
           <InlineModal.Provider value={true}>{children}</InlineModal.Provider>
         </div>

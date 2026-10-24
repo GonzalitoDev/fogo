@@ -918,12 +918,6 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
   .friends-title { display: none; }
   .head-divider { display: none; }
   .friends-main { padding: 12px; border-right: 0; }
-  .settings { flex-direction: column; }
-  .settings-side { flex: none; justify-content: flex-start; max-height: 42vh; }
-  .settings-side-in { width: 100%; padding: 16px 12px; }
-  .settings-content { padding: 20px 16px 60px; }
-  .settings-close { position: fixed; top: 10px; right: 10px; padding: 0; height: auto; z-index: 2; }
-  .settings-close span { display: none; }
   .settings .pe { grid-template-columns: minmax(0, 1fr); }
   .pins-pop { right: 8px !important; left: 8px; width: auto; }
   .new-bar { left: 8px; right: 8px; }
@@ -1067,3 +1061,48 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .vc-panel { gap: 2px; }
 .vc-activity { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.55); font-size: 12px; font-weight: 600; color: #fff; }
 .vc-tag .bot-tag, .vc-roster .bot-tag { flex: none; }
+
+/* ajustes: arriba de todo solo en el celu */
+.settings-mtop, .settings-chev { display: none; }
+@media (max-width: 760px) {
+  .settings { flex-direction: column; animation: none; }
+  .settings-side, .settings-main { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; overflow: hidden; }
+  .settings.m-list .settings-main, .settings.m-content .settings-side { display: none; }
+  .settings-side { background: var(--rail); justify-content: flex-start; }
+  .settings-side-in { width: 100%; flex: 1; overflow-y: auto; padding: 8px 12px max(24px, env(safe-area-inset-bottom)); gap: 0; }
+  .settings-side h3 { margin: 16px 0 6px; padding: 0 6px; overflow: visible; white-space: normal; }
+  .settings-side button { padding: 14px 14px; font-size: 16px; background: var(--side); border-radius: 0; color: var(--ink); }
+  .settings-side h3 + button { border-radius: 10px 10px 0 0; }
+  .settings-side button:has(+ h3), .settings-side button:has(+ hr), .settings-side button:last-of-type { border-radius: 0 0 10px 10px; }
+  .settings-side h3 + button:has(+ h3), .settings-side h3 + button:has(+ hr) { border-radius: 10px; }
+  .settings-side button + button { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+  .settings-side button.on { background: var(--side); color: var(--ink); }
+  .settings-side button.danger { background: var(--side); border-radius: 10px; margin-top: 4px; }
+  .settings-side hr { margin: 12px 0; border: 0; }
+  .settings-chev { display: grid; color: var(--ink-3); }
+  .settings-chev svg { width: 18px; height: 18px; transform: rotate(-90deg); }
+  .settings-side button.danger .settings-chev { display: none; }
+  .settings-version { padding: 12px 6px; }
+  .settings-mtop { display: flex; align-items: center; gap: 8px; flex: none; height: 56px; padding: 0 8px; padding-top: env(safe-area-inset-top); background: var(--rail); border-bottom: 1px solid rgba(0, 0, 0, 0.25); }
+  .settings-mtop b { flex: 1; min-width: 0; font-size: 17px; font-weight: 700; color: var(--ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .settings-side .settings-mtop b { padding-left: 8px; }
+  .settings-mtop button { width: 40px; height: 40px; flex: none; border: 0; background: none; color: var(--ink-2); display: grid; place-items: center; border-radius: 50%; }
+  .settings-mtop button:active { background: rgba(78, 80, 88, 0.4); }
+  .settings-mtop svg { width: 22px; height: 22px; }
+  .settings-mtop svg.back { transform: rotate(90deg); }
+  .settings-main { display: flex; flex-direction: column; }
+  .settings-content { flex: 1; overflow-y: auto; max-width: none; padding: 16px 16px max(48px, env(safe-area-inset-bottom)); }
+  .settings-content > h1:first-child { display: none; }
+  .settings-close { display: none; }
+  /* Mi cuenta */
+  .acct-banner { height: 96px; }
+  .acct-top { flex-wrap: wrap; height: auto; padding: 44px 16px 12px; align-items: center; }
+  .acct-avatar { top: -44px; }
+  .acct-avatar .avatar { width: 72px; height: 72px; }
+  .acct-top b { margin-left: 0; flex: 1 1 100%; font-size: 20px; }
+  .acct-top .btn { flex: 1 1 100%; height: 38px; }
+  .acct-fields { margin: 4px 12px 12px; padding: 14px; gap: 18px; }
+  .acct-field { flex-wrap: wrap; }
+  .acct-field > div { min-width: 0; flex: 1; }
+  .acct-field p { overflow-wrap: anywhere; }
+}
