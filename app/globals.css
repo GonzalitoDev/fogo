@@ -933,3 +933,48 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .find-btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .inline-modal p { margin: 0; color: var(--ink-2); }
 .toast { color: var(--ink-strong); z-index: 80; }
+
+/* ---------- etiqueta BOT ---------- */
+.bot-tag { display: inline-flex; align-items: center; gap: 2px; height: 15px; padding: 0 4px; border-radius: 3px; background: #5865f2; color: #fff; font-size: 10px; font-weight: 600; line-height: 15px; vertical-align: middle; letter-spacing: 0.02em; flex: none; position: relative; top: -1px; }
+.pv-names h2 .bot-tag { top: -3px; margin-left: 4px; }
+
+/* ---------- permisos por categoría ---------- */
+.modal:has(.perms) { width: 780px !important; }
+.chan-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px 0 4px; }
+.chan-tabs button { border: 0; background: none; color: var(--ink-2); padding: 8px 10px; font-weight: 600; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.chan-tabs button[aria-selected="true"] { color: var(--ink-strong); border-bottom-color: var(--accent); }
+.perms { display: grid; gap: 14px; }
+.perms-private { display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 8px; background: var(--side); }
+.perms-private > div { flex: 1; }
+.perms-private b { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-strong); }
+.perms-private b svg { width: 16px; height: 16px; }
+.perms-private p { margin: 4px 0 0; font-size: 14px; }
+.perms-grid { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; }
+.perms h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--ink-3); margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.02em; }
+.perms-targets { display: grid; align-content: start; gap: 2px; }
+.perms-targets button { display: flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--ink-2); text-align: left; padding: 6px 8px; border-radius: 4px; font-size: 14px; font-weight: 500; }
+.perms-targets button:hover { background: rgba(78, 80, 88, 0.3); color: var(--ink); }
+.perms-targets button.on { background: rgba(78, 80, 88, 0.6); color: #fff; }
+.perms-targets .perms-add { color: var(--ink-3); }
+.perms-targets .perms-add svg { width: 14px; height: 14px; }
+.role-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.perms-list { display: grid; align-content: start; }
+.perm-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.perm-row > div:first-child { flex: 1; min-width: 0; }
+.perm-row b { color: var(--ink); font-weight: 500; }
+.perm-row p { margin: 2px 0 0; font-size: 13px; }
+.tri { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; }
+.tri button { width: 32px; height: 26px; border: 0; background: transparent; color: var(--ink-3); display: grid; place-items: center; }
+.tri button + button { border-left: 1px solid var(--line); }
+.tri button svg { width: 15px; height: 15px; }
+.tri button span { font-weight: 700; }
+.tri button.deny.on { background: #da373c; color: #fff; }
+.tri button.inherit.on { background: #4e5058; color: #fff; }
+.tri button.allow.on { background: #248046; color: #fff; }
+.tri button:not(.on):hover { background: rgba(78, 80, 88, 0.3); color: var(--ink); }
+.hash-wrap { position: relative; display: inline-grid; flex: none; }
+.hash-lock { position: absolute; right: -3px; top: -3px; width: 11px !important; height: 11px !important; color: var(--ink-3); background: var(--side); border-radius: 3px; }
+.blocked-composer .composer-box { display: flex; align-items: center; gap: 8px; }
+.blocked-composer .composer-box svg { width: 18px; height: 18px; }
+.composer-row .plus-btn:disabled { opacity: 0.35; }
+@media (max-width: 760px) { .perms-grid { grid-template-columns: minmax(0, 1fr); } }

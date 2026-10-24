@@ -5,7 +5,7 @@ import { ProfilePopout } from "./Profile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildRows, channelTree, dayLabel, firstUnreadId, friendlyError, timeShort } from "@/lib/chat";
 import { typingText, useTyping } from "@/lib/typing";
-import { can, fail, jumpToMessage, listPins, loadOlder, nameColor, presenceOf, searchMessages, setState, useStore } from "@/lib/store";
+import { can, channelAllows, fail, jumpToMessage, listPins, loadOlder, nameColor, presenceOf, searchMessages, setState, useStore } from "@/lib/store";
 import type { Channel, Message as Msg, Profile } from "@/lib/types";
 import { Composer, type ComposerHandle } from "./Composer";
 import { Icon } from "./Icon";
@@ -72,6 +72,9 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
     return list.slice(i).filter((m) => m.author_id !== me?.id).length;
   }, [list, newId, me?.id]);
   const canPin = isDm || canModerate;
+  const canSend = channelAllows(state, channel.id, "send_messages");
+  const canAttach = channelAllows(state, channel.id, "attach_files");
+  const canReact = channelAllows(state, channel.id, "add_reactions");
   const scrolledToNew = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -304,6 +307,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
                   me={me?.id ?? ""}
                   canModerate={canModerate}
                   canPin={canPin}
+                  canReact={canReact}
                   author={profiles[m.author_id]}
                   authorColor={colorFor(m.author_id)}
                   reactions={reactions[m.id] ?? EMPTY}
@@ -325,6 +329,12 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         <div className="composer blocked-composer">
           <div className="composer-box">No podés mandarle mensajes a un usuario que bloqueaste.</div>
         </div>
+      ) : !canSend ? (
+        <div className="composer blocked-composer">
+          <div className="composer-box">
+            <Icon name="lock" /> No tenés permiso para enviar mensajes en este canal.
+          </div>
+        </div>
       ) : (
       <Composer
         ref={composer}
@@ -338,6 +348,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         onCancelReply={() => setReplyTo(null)}
         onEditLast={editLast}
         onTyping={typing.notify}
+        noAttach={!canAttach}
       />
       )}
       <div className="typing" aria-live="polite">

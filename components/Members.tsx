@@ -9,6 +9,7 @@ import { Avatar, Confirm, type MenuItem } from "./ui";
 import { BadgeRow } from "./Badges";
 import { ProfilePopout } from "./Profile";
 import { BanDialog } from "./Moderation";
+import { BotTag } from "./Permissions";
 
 export function MemberList({ server }: { server: Server }) {
   const state = useStore((s) => s);
@@ -76,6 +77,7 @@ export function MemberList({ server }: { server: Server }) {
                     <span className="nm" style={{ color: nameColor(state, server.id, p.id) }}>
                       {p.display_name}
                     </span>
+                    {p.is_bot && <BotTag />}
                     {p.id === server.owner_id && (
                       <span className="crown" title="Dueño del servidor" aria-label="Dueño del servidor">
                         👑

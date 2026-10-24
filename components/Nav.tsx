@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { channelTree } from "@/lib/chat";
-import { can, dmUnread, go, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, useStore, type State } from "@/lib/store";
+import { can, channelAllows, dmUnread, go, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, useStore, type State } from "@/lib/store";
 import type { Status } from "@/lib/types";
 import type { Channel, Server } from "@/lib/types";
 import { Ember, Icon } from "./Icon";
@@ -146,9 +146,14 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
 }
 
 function ChannelRow({ c, active, owner, onEdit, onPick, unread }: { c: Channel; active: boolean; owner: boolean; onEdit: () => void; onPick: () => void; unread: State["unread"][string] | undefined }) {
+  const priv = useStore((s) => [c.parent_id, c.id].some((id) => id && (s.overrides[id] ?? []).some((o) => !o.role_id && o.deny.includes("view_channel"))));
+  const readOnly = useStore((s) => !channelAllows(s, c.id, "send_messages"));
   return (
-    <div className={`chan${active ? " active" : ""}${unread?.unread && !active ? " unread" : ""}`}>
-      <Icon name="hash" className="hash" />
+    <div className={`chan${active ? " active" : ""}${unread?.unread && !active ? " unread" : ""}`} title={readOnly ? "Solo lectura" : undefined}>
+      <span className="hash-wrap">
+        <Icon name="hash" className="hash" />
+        {priv && <Icon name="lock" className="hash-lock" />}
+      </span>
       <button className="label" onClick={onPick} aria-current={active ? "page" : undefined}>
         {c.name}
       </button>

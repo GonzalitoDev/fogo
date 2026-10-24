@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, supabase } from "./supabase";
 import { friendlyError, upsertMessage } from "./chat";
-import type { Ban, Presence, Relation, SettingsView, Status } from "./types";
+import type { Ban, ChanPerm, Override, Presence, Relation, SettingsView, Status } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
@@ -42,6 +42,7 @@ export type State = {
   settings: SettingsView | null;
   sounds: boolean;
   jumpTo: string | null; // mensaje a mostrar (desde búsqueda o fijados)
+  overrides: Record<string, Override[]>; // channelId -> permisos por rol
 };
 
 const initial: State = {
@@ -75,6 +76,7 @@ const initial: State = {
   settings: null,
   sounds: true,
   jumpTo: null,
+  overrides: {},
 };
 
 let state: State = initial;
@@ -102,7 +104,7 @@ export function fail(e: unknown) {
   toast(friendlyError(e), "error");
 }
 
-export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status";
+export const PCOLS = "id,username,display_name,color,created_at,bio,pronouns,banner_color,theme_top,theme_bottom,avatar_path,banner_path,status,custom_status,is_bot";
 const meId = () => state.session?.user.id ?? "";
 
 /* ---------- lugar actual (en el hash para que sobreviva a recargar) ---------- */
@@ -326,6 +328,8 @@ if (typeof document !== "undefined") {
 
 /** Estado que se muestra de alguien (yo me veo como elegí, aunque esté invisible). */
 export function presenceOf(s: State, userId: string): Presence {
+  const prof = s.profiles[userId];
+  if (prof?.is_bot) return prof.status === "invisible" || !prof.status ? "offline" : prof.status;
   if (userId === s.me?.id) {
     const st = s.me.status ?? "online";
     return st === "invisible" ? "offline" : st === "online" && away ? "idle" : st;
@@ -351,7 +355,7 @@ type MemberRow = { server_id: string; user_id: string; joined_at?: string; profi
 type DmRow = { channel_id: string; user_id: string; profile: Profile | null };
 
 export async function loadAll() {
-  const [servers, channels, members, dms, unread, roles, memberRoles] = await Promise.all([
+  const [servers, channels, members, dms, unread, roles, memberRoles, overrides] = await Promise.all([
     supabase.from("fogon_servers").select("*"),
     supabase.from("fogon_channels").select("*"),
     supabase.from("fogon_members").select(`server_id,user_id,joined_at,profile:fogon_profiles(${PCOLS})`),
@@ -359,7 +363,9 @@ export async function loadAll() {
     supabase.rpc("fogon_unread"),
     supabase.from("fogon_roles").select("*"),
     supabase.from("fogon_member_roles").select("server_id,user_id,role_id"),
+    supabase.from("fogon_channel_overrides").select("*"),
   ]);
+  if (!overrides.error) setState({ overrides: groupOverrides(overrides.data as Override[]) });
   const err = servers.error || channels.error || members.error || dms.error || unread.error || roles.error || memberRoles.error;
   if (err) return fail(err);
   const profiles: Record<string, Profile> = { ...state.profiles };
@@ -1011,6 +1017,7 @@ function startRealtime() {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_friends" }, () => friendsSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_channel_overrides" }, () => reloadSoon())
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_profiles" }, (p) => {
       const np = p.new as Profile;
       if (!state.profiles[np.id]) return;
@@ -1209,4 +1216,63 @@ export function jumpToMessage(m: Message) {
 
 export function openSettings(v: SettingsView | null) {
   setState({ settings: v });
+}
+
+/* ---------- permisos por categoría / canal ---------- */
+
+function groupOverrides(rows: Override[]) {
+  const map: Record<string, Override[]> = {};
+  for (const o of rows) (map[o.channel_id] ??= []).push(o);
+  return map;
+}
+
+/** Igual que fogon_channel_allows en la base: categoría y después canal; @everyone y después roles. */
+export function channelAllows(s: State, channelId: string, perm: ChanPerm): boolean {
+  const c = s.channels[channelId];
+  if (!c || c.kind === "dm" || !c.server_id) return true;
+  if (s.servers[c.server_id]?.owner_id === s.me?.id || can(s, c.server_id, "manage_channels")) return true;
+  const mine = new Set(s.memberRoles[c.server_id]?.[s.me?.id ?? ""] ?? []);
+  let ok = true;
+  for (const lvl of [c.parent_id, c.id]) {
+    if (!lvl) continue;
+    const list = s.overrides[lvl] ?? [];
+    const ev = list.find((o) => !o.role_id);
+    if (ev?.deny.includes(perm)) ok = false;
+    if (ev?.allow.includes(perm)) ok = true;
+    const rs = list.filter((o) => o.role_id && mine.has(o.role_id));
+    if (rs.some((o) => o.deny.includes(perm))) ok = false;
+    if (rs.some((o) => o.allow.includes(perm))) ok = true;
+  }
+  if (perm !== "view_channel" && ok) return channelAllows(s, channelId, "view_channel");
+  return ok;
+}
+
+/** Cambia un permiso para @everyone (roleId null) o un rol: permitir, denegar o heredar. */
+export async function setOverride(serverId: string, channelId: string, roleId: string | null, perm: ChanPerm, value: "allow" | "deny" | "inherit") {
+  const list = state.overrides[channelId] ?? [];
+  const cur = list.find((o) => (o.role_id ?? null) === roleId);
+  const allow = (cur?.allow ?? []).filter((p) => p !== perm);
+  const deny = (cur?.deny ?? []).filter((p) => p !== perm);
+  if (value === "allow") allow.push(perm);
+  if (value === "deny") deny.push(perm);
+  const before = state.overrides;
+  const optimistic: Override = { id: cur?.id ?? crypto.randomUUID(), server_id: serverId, channel_id: channelId, role_id: roleId, allow, deny };
+  setState({ overrides: { ...before, [channelId]: [...list.filter((o) => o !== cur), optimistic] } });
+  const res = cur
+    ? await supabase.from("fogon_channel_overrides").update({ allow, deny }).eq("id", cur.id)
+    : await supabase.from("fogon_channel_overrides").insert({ id: optimistic.id, server_id: serverId, channel_id: channelId, role_id: roleId, allow, deny });
+  if (res.error) {
+    setState({ overrides: before });
+    throw res.error;
+  }
+}
+
+/** Saca todos los permisos propios de un rol en esa categoría / canal. */
+export async function removeOverride(channelId: string, roleId: string | null) {
+  const list = state.overrides[channelId] ?? [];
+  const cur = list.find((o) => (o.role_id ?? null) === roleId);
+  if (!cur) return;
+  setState((s) => ({ overrides: { ...s.overrides, [channelId]: list.filter((o) => o !== cur) } }));
+  const { error } = await supabase.from("fogon_channel_overrides").delete().eq("id", cur.id);
+  if (error) throw error;
 }

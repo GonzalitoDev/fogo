@@ -133,3 +133,30 @@ describe("línea de NUEVOS y escribiendo", () => {
     expect(typingText(["A", "B", "C", "D"])).toBe("Varias personas están escribiendo…");
   });
 });
+
+import { channelAllows, getState, setState } from "./store";
+
+describe("permisos por categoría", () => {
+  it("@everyone denegado, un rol permitido, el canal suma encima", () => {
+    const base = getState();
+    setState({
+      me: { id: "u", username: "u", display_name: "U", color: "#000" },
+      servers: { s: { id: "s", name: "S", owner_id: "otro", invite_code: "x", created_at: "" } },
+      channels: {
+        cat: { id: "cat", server_id: "s", kind: "category", name: "staff", topic: "", position: 0, parent_id: null, last_message_at: null, created_at: "" },
+        ch: { id: "ch", server_id: "s", kind: "text", name: "secreto", topic: "", position: 0, parent_id: "cat", last_message_at: null, created_at: "" },
+      } as never,
+      memberRoles: { s: { u: [] } },
+      roles: {},
+      overrides: { cat: [{ id: "1", server_id: "s", channel_id: "cat", role_id: null, allow: [], deny: ["view_channel"] }] },
+    });
+    expect(channelAllows(getState(), "ch", "view_channel")).toBe(false);
+    expect(channelAllows(getState(), "ch", "send_messages")).toBe(false);
+    setState({ memberRoles: { s: { u: ["staff"] } }, overrides: { ...getState().overrides, cat: [...getState().overrides.cat, { id: "2", server_id: "s", channel_id: "cat", role_id: "staff", allow: ["view_channel"], deny: [] }] } });
+    expect(channelAllows(getState(), "ch", "view_channel")).toBe(true);
+    setState({ overrides: { ...getState().overrides, ch: [{ id: "3", server_id: "s", channel_id: "ch", role_id: null, allow: [], deny: ["send_messages"] }] } });
+    expect(channelAllows(getState(), "ch", "send_messages")).toBe(false);
+    expect(channelAllows(getState(), "ch", "view_channel")).toBe(true);
+    setState(base);
+  });
+});

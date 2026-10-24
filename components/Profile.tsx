@@ -17,6 +17,7 @@ import {
 } from "@/lib/store";
 import type { Presence, Profile } from "@/lib/types";
 import { BadgeIcon, useBadges } from "./Badges";
+import { BotTag } from "./Permissions";
 import { Ember, Icon } from "./Icon";
 import { Avatar, Modal, STATUS_LABEL, useEscape } from "./ui";
 
@@ -105,7 +106,9 @@ export function ProfileView({
       </div>
       <div className="pv-inner">
         <div className="pv-names">
-          <h2>{p.display_name}</h2>
+          <h2>
+            {p.display_name} {p.is_bot && <BotTag />}
+          </h2>
           <div className="pv-handle">
             <span>{p.username}</span>
             {p.pronouns && (

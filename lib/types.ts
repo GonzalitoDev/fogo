@@ -13,6 +13,7 @@ export type Profile = {
   banner_path?: string | null;
   status?: Status;
   custom_status?: string;
+  is_bot?: boolean;
 };
 
 export type Status = "online" | "idle" | "dnd" | "invisible";
@@ -102,3 +103,12 @@ export type Ban = { server_id: string; user_id: string; reason: string; banned_b
 
 export type Relation = { status: "friend" | "incoming" | "outgoing"; since: string };
 export type SettingsView = { kind: "user"; section: string } | { kind: "server"; serverId: string; section: string };
+
+export type ChanPerm = "view_channel" | "send_messages" | "add_reactions" | "attach_files";
+export const CHAN_PERMS: { id: ChanPerm; label: string; help: string }[] = [
+  { id: "view_channel", label: "Ver canales", help: "Quien no lo tenga no ve los canales de esta categoría ni sus mensajes." },
+  { id: "send_messages", label: "Enviar mensajes", help: "Escribir en los canales. Sin esto, los canales quedan de solo lectura." },
+  { id: "add_reactions", label: "Añadir reacciones", help: "Reaccionar con emojis a los mensajes." },
+  { id: "attach_files", label: "Adjuntar archivos", help: "Subir imágenes a los mensajes." },
+];
+export type Override = { id: string; server_id: string; channel_id: string; role_id: string | null; allow: ChanPerm[]; deny: ChanPerm[] };

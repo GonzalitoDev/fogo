@@ -29,6 +29,7 @@ const P: Record<string, string> = {
   plusCircle: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 8v8M8 12h8",
   inbox: "M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z",
   arrowDown: "M12 5v14M19 12l-7 7-7-7",
+  lock: "M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
 };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { BadgeRow } from "./Badges";
+import { BotTag } from "./Permissions";
 
 import { memo, useEffect, useRef, useState } from "react";
 import { friendlyError, groupReactions, MAX_LEN, stampLabel, timeShort } from "@/lib/chat";
@@ -16,6 +17,7 @@ type Props = {
   me: string;
   canModerate: boolean;
   canPin?: boolean;
+  canReact?: boolean;
   author?: Profile;
   authorColor?: string;
   reactions: Reaction[];
@@ -171,6 +173,7 @@ function MessageView(p: Props) {
             <button className="author" style={{ ["--c" as string]: p.authorColor ?? "var(--ink)" }} onClick={(e) => p.author && p.onAuthor(p.author, { x: e.clientX, y: e.clientY })}>
               {p.author?.display_name ?? "…"}
             </button>
+            {p.author?.is_bot && <BotTag />}
             <BadgeRow p={p.author} />
             {m.pinned_at && (
               <span className="pinned-mark" title="Mensaje fijado">
@@ -213,7 +216,7 @@ function MessageView(p: Props) {
               <button
                 key={g.emoji}
                 className={`react${g.mine ? " mine" : ""}`}
-                onClick={() => void toggleReaction(m.id, g.emoji)}
+                onClick={() => p.canReact !== false && void toggleReaction(m.id, g.emoji)}
                 aria-pressed={g.mine}
                 aria-label={`${g.emoji} ${g.count}`}
                 title={g.users.map((u) => profiles[u]?.display_name ?? "alguien").join(", ")}
@@ -235,17 +238,19 @@ function MessageView(p: Props) {
 
       {!m.status && !p.editing && (
         <div className={`msg-tools${picker ? " open" : ""}`} role="toolbar" aria-label="Acciones del mensaje">
-          <button
-            className="icon-btn"
-            onClick={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              setPicker({ x: r.right, y: r.top });
-            }}
-            aria-label="Reaccionar"
-            title="Reaccionar"
-          >
-            <Icon name="smile" />
-          </button>
+          {p.canReact !== false && (
+            <button
+              className="icon-btn"
+              onClick={(e) => {
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setPicker({ x: r.right, y: r.top });
+              }}
+              aria-label="Reaccionar"
+              title="Reaccionar"
+            >
+              <Icon name="smile" />
+            </button>
+          )}
           <button className="icon-btn" onClick={p.onReply} aria-label="Responder" title="Responder">
             <Icon name="reply" />
           </button>

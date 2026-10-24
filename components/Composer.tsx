@@ -25,6 +25,7 @@ type Props = {
   onCancelReply: () => void;
   onEditLast: () => void;
   onTyping?: (stop?: boolean) => void;
+  noAttach?: boolean;
   disabled?: string;
 };
 
@@ -60,6 +61,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
   }, [text]);
 
   const addFiles = (list: File[]) => {
+    if (p.noAttach) return toast("No tenés permiso para adjuntar archivos en este canal.", "error");
     const ok: { file: File; url: string }[] = [];
     for (const f of list) {
       if (!IMAGE_TYPES.includes(f.type)) {
@@ -186,7 +188,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
           </div>
         )}
         <div className="composer-row">
-          <button className="icon-btn plus-btn" onClick={() => fileInput.current?.click()} aria-label="Subir una imagen" title="Subir una imagen">
+          <button className="icon-btn plus-btn" onClick={() => fileInput.current?.click()} aria-label="Subir una imagen" title={p.noAttach ? "No podés adjuntar archivos en este canal" : "Subir una imagen"} disabled={p.noAttach}>
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
               <circle cx="12" cy="12" r="10" fill="currentColor" />
               <path d="M12 7v10M7 12h10" stroke="var(--input-bg)" strokeWidth="2.2" strokeLinecap="round" />

@@ -25,6 +25,7 @@ import {
   type ProfilePatch,
 } from "@/lib/store";
 import { ProfileView } from "./Profile";
+import { ChannelPermissions } from "./Permissions";
 import type { Channel, Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Avatar, COLORS, Confirm, Modal, copyText } from "./ui";
@@ -323,8 +324,31 @@ export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> 
   const [confirm, setConfirm] = useState(false);
   const finalName = isCat ? name.trim() : slugChannel(name);
   const noun = isCat ? "categoría" : "canal";
+  const [tab, setTab] = useState<"general" | "perms">("general");
+  const live = initial.id ? channels[initial.id] : undefined;
   return (
-    <Modal label={initial.id ? `Editar ${noun}` : `Crear ${noun}`} onClose={onClose}>
+    <Modal label={initial.id ? `Editar ${noun}` : `Crear ${noun}`} onClose={onClose} wide={tab === "perms"}>
+      {live && (
+        <div className="chan-tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>
+            Vista general
+          </button>
+          <button role="tab" aria-selected={tab === "perms"} onClick={() => setTab("perms")}>
+            Permisos
+          </button>
+        </div>
+      )}
+      {tab === "perms" && live ? (
+        <>
+          <h2>Permisos de {isCat ? live.name : `#${live.name}`}</h2>
+          <ChannelPermissions channel={live} />
+          <div className="foot">
+            <button type="button" className="btn primary" onClick={onClose}>
+              Listo
+            </button>
+          </div>
+        </>
+      ) : (
       <form
         style={{ display: "grid", gap: 16 }}
         onSubmit={async (e) => {
@@ -388,6 +412,7 @@ export function ChannelDialog({ initial, onClose }: { initial: Partial<Channel> 
           </button>
         </div>
       </form>
+      )}
       {confirm && initial.id && (
         <Confirm
           title={isCat ? `Borrar la categoría ${initial.name}` : `Borrar #${initial.name}`}
