@@ -46,7 +46,7 @@ export function ChannelPermissions({ channel }: { channel: Channel }) {
           <b>
             <Icon name="lock" /> {isCat ? "Categoría privada" : "Canal privado"}
           </b>
-          <p className="hint">Solo los roles que elijas (y quienes administran canales) {isCat ? "van a ver los canales de esta categoría" : "van a ver este canal"}.</p>
+          <p className="hint">Solo los roles que elijas (y los administradores) {isCat ? "van a ver los canales de esta categoría" : "van a ver este canal"}.</p>
         </div>
         <label className="switch">
           <input type="checkbox" checked={priv} onChange={(e) => void setOverride(channel.server_id!, channel.id, null, "view_channel", e.target.checked ? "deny" : "inherit").catch((er) => toast(friendlyError(er), "error"))} />
@@ -101,7 +101,7 @@ export function ChannelPermissions({ channel }: { channel: Channel }) {
               </button>
             )}
           </h3>
-          {CHAN_PERMS.map((p) => {
+          {CHAN_PERMS.filter((p) => isCat || p.kinds.includes(channel.kind === "voice" ? "voice" : "text")).map((p) => {
             const v = val(p.id);
             return (
               <div key={p.id} className="perm-row">

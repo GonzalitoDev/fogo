@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { friendlyError } from "@/lib/chat";
-import { deleteRole, myPerms, rolesOf, saveRole, serverRoles, setMemberRole, topPosition, useStore } from "@/lib/store";
-import { PERMS, type Perm, type Profile, type Role, type Server } from "@/lib/types";
+import { deleteRole, myPerms, rolesOf, saveRole, serverRoles, setEveryonePerms, setMemberRole, topPosition, useStore } from "@/lib/store";
+import { EVERYONE_DEFAULT, PERM_GROUPS, PERMS, type Perm, type Profile, type Role, type Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Avatar, COLORS, Confirm, Modal } from "./ui";
 
@@ -20,12 +20,14 @@ export function RolesDialog({ server, onClose }: { server: Server; onClose: () =
   const mine = myPerms(state, server.id);
   const myTop = topPosition(state, server.id, state.me?.id ?? "");
   const [editing, setEditing] = useState<Partial<Role> | null>(null);
+  const [everyone, setEveryone] = useState(false);
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const ids of Object.values(state.memberRoles[server.id] ?? {})) for (const id of ids) c[id] = (c[id] ?? 0) + 1;
     return c;
   }, [state.memberRoles, server.id]);
 
+  if (everyone) return <EveryoneEditor server={server} myPerms={mine} onBack={() => setEveryone(false)} onClose={onClose} />;
   if (editing)
     return (
       <RoleEditor
@@ -69,6 +71,12 @@ export function RolesDialog({ server, onClose }: { server: Server; onClose: () =
           );
         })}
         {!roles.length && <p className="hint">Todavía no hay roles. Creá uno, por ejemplo “Moderador”.</p>}
+        <button className="member everyone-row" onClick={() => setEveryone(true)} title="Lo que puede hacer todo el mundo">
+          <RoleDot color="#99a8a4" />
+          <span className="nm">@everyone</span>
+          <span className="hint">Permisos por defecto para todos</span>
+          <Icon name="edit" />
+        </button>
       </div>
       <div className="foot">
         <button className="btn ghost inline-hide" onClick={onClose}>
@@ -78,6 +86,94 @@ export function RolesDialog({ server, onClose }: { server: Server; onClose: () =
           <Icon name="plus" /> Crear rol
         </button>
       </div>
+    </Modal>
+  );
+}
+
+/** Permisos agrupados como en Discord, con interruptores. No se puede dar lo que uno no tiene. */
+export function PermissionToggles({ value, mine, onToggle }: { value: Perm[]; mine: Set<Perm>; onToggle: (p: Perm) => void }) {
+  const [q, setQ] = useState("");
+  const list = PERMS.filter((x) => !q.trim() || (x.label + " " + x.help).toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <div className="perm-list">
+      <input className="input perm-search" placeholder="Buscar permisos" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar permisos" />
+      {PERM_GROUPS.map((g) => {
+        const items = list.filter((x) => x.group === g.id);
+        if (!items.length) return null;
+        return (
+          <section key={g.id} className="perm-group">
+            <h4>{g.label}</h4>
+            {items.map((perm) => {
+              const allowed = mine.has(perm.id);
+              const on = value.includes(perm.id);
+              return (
+                <label key={perm.id} className={`prow${perm.id === "administrator" ? " admin" : ""}${allowed ? "" : " locked"}`} title={allowed ? undefined : "No podés dar un permiso que no tenés"}>
+                  <span className="perm-text">
+                    <b>{perm.label}</b>
+                    <small>{perm.help}</small>
+                  </span>
+                  <span className={`pswitch${on ? " on" : ""}`}>
+                    <input type="checkbox" role="switch" checked={on} disabled={!allowed} onChange={() => onToggle(perm.id)} aria-label={perm.label} />
+                    <i />
+                  </span>
+                </label>
+              );
+            })}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/** @everyone: lo que puede hacer todo el mundo en el servidor. */
+function EveryoneEditor({ server, myPerms: mine, onBack, onClose }: { server: Server; myPerms: Set<Perm>; onBack: () => void; onClose: () => void }) {
+  const live = useStore((s) => s.servers[server.id]) ?? server;
+  const [perms, setPerms] = useState<Perm[]>(live.everyone_perms ?? EVERYONE_DEFAULT);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const toggle = (perm: Perm) => setPerms((cur) => (cur.includes(perm) ? cur.filter((x) => x !== perm) : [...cur, perm]));
+  // lo que ya tenía @everyone se puede sacar aunque yo no lo tenga
+  const editable = new Set<Perm>([...mine, ...(live.everyone_perms ?? EVERYONE_DEFAULT)]);
+  return (
+    <Modal label="@everyone" onClose={onClose}>
+      <form
+        style={{ display: "grid", gap: 16 }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setErr("");
+          try {
+            await setEveryonePerms(server.id, perms);
+            onBack();
+          } catch (e) {
+            setErr(friendlyError(e));
+            setBusy(false);
+          }
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button type="button" className="icon-btn" onClick={onBack} aria-label="Volver a la lista de roles">
+            <Icon name="chevron" className="rot90" />
+          </button>
+          <h2>Permisos de @everyone</h2>
+        </div>
+        <p className="hint">Es lo que puede hacer <b>todo el mundo</b> en el servidor, tenga el rol que tenga. Los roles suman permisos encima de esto, y cada canal puede cambiarlos.</p>
+        <PermissionToggles value={perms} mine={editable} onToggle={toggle} />
+        {err && (
+          <div className="err" role="alert">
+            {err}
+          </div>
+        )}
+        <div className="foot">
+          <button type="button" className="btn ghost" onClick={() => setPerms(EVERYONE_DEFAULT)}>
+            Volver a lo de siempre
+          </button>
+          <button className="btn primary" disabled={busy}>
+            Guardar
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }
@@ -151,24 +247,7 @@ function RoleEditor(p: { server: Server; initial: Partial<Role>; myPerms: Set<Pe
         <label className="radio">
           <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Darlo solo a los miembros nuevos cuando entran al servidor
         </label>
-        <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: 4 }}>
-          <legend className="field" style={{ marginBottom: 6 }}>
-            <span>Permisos</span>
-          </legend>
-          {PERMS.map((perm) => {
-            const allowed = p.myPerms.has(perm.id);
-            return (
-              <label key={perm.id} className="radio" style={{ alignItems: "flex-start", opacity: allowed ? 1 : 0.55 }} title={allowed ? undefined : "No podés dar un permiso que no tenés"}>
-                <input type="checkbox" checked={perms.includes(perm.id)} disabled={!allowed} onChange={() => toggle(perm.id)} style={{ marginTop: 2 }} />
-                <span>
-                  <b style={{ fontWeight: 600 }}>{perm.label}</b>
-                  <br />
-                  <span className="hint">{perm.help}</span>
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
+        <PermissionToggles value={perms} mine={p.myPerms} onToggle={toggle} />
         {err && (
           <div className="err" role="alert">
             {err}

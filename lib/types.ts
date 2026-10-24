@@ -36,6 +36,7 @@ export type Server = {
   invite_code: string;
   created_at: string;
   icon_url?: string | null;
+  everyone_perms?: Perm[];
   boost_count?: number;
   banner_color?: string | null;
   invite_vanity?: boolean;
@@ -92,17 +93,46 @@ export type Unread = { unread: boolean; mentions: number };
 /** Dónde está parado el usuario */
 export type Place = { kind: "server"; serverId: string; channelId: string | null } | { kind: "dm"; channelId: string | null };
 
-export type Perm = "manage_server" | "manage_channels" | "manage_roles" | "manage_messages" | "kick_members" | "ban_members" | "mention_everyone";
+export type Perm =
+  | "view_channel" | "manage_channels" | "manage_roles" | "manage_server" | "create_invite"
+  | "kick_members" | "ban_members"
+  | "send_messages" | "add_reactions" | "attach_files" | "mention_everyone" | "manage_messages"
+  | "connect" | "speak" | "video" | "mute_members" | "deafen_members" | "move_members"
+  | "administrator";
 
-export const PERMS: { id: Perm; label: string; help: string }[] = [
-  { id: "manage_channels", label: "Administrar canales", help: "Crear, editar y borrar canales y categorías." },
-  { id: "manage_messages", label: "Administrar mensajes", help: "Borrar mensajes de otras personas." },
-  { id: "kick_members", label: "Echar miembros", help: "Sacar del servidor a quien tenga un rol más bajo." },
-  { id: "ban_members", label: "Banear miembros", help: "Sacar y prohibir volver a quien tenga un rol más bajo, y ver la lista de baneados." },
-  { id: "manage_roles", label: "Administrar roles", help: "Crear y asignar roles por debajo del suyo, sin dar permisos que no tenga." },
-  { id: "manage_server", label: "Administrar el servidor", help: "Cambiar el nombre y generar un link de invitación nuevo." },
-  { id: "mention_everyone", label: "Mencionar a @everyone", help: "Avisar a todos los miembros a la vez." },
+export type PermGroup = "general" | "members" | "text" | "voice" | "advanced";
+export const PERM_GROUPS: { id: PermGroup; label: string }[] = [
+  { id: "general", label: "Permisos generales del servidor" },
+  { id: "members", label: "Permisos de miembros" },
+  { id: "text", label: "Permisos de canales de texto" },
+  { id: "voice", label: "Permisos de canales de voz" },
+  { id: "advanced", label: "Permisos avanzados" },
 ];
+
+export const PERMS: { id: Perm; label: string; help: string; group: PermGroup }[] = [
+  { id: "view_channel", group: "general", label: "Ver canales", help: "Ver los canales de texto y de voz (salvo los que sean privados)." },
+  { id: "manage_channels", group: "general", label: "Administrar canales", help: "Crear, editar y borrar canales y categorías." },
+  { id: "manage_roles", group: "general", label: "Administrar roles", help: "Crear y asignar roles por debajo del suyo, sin dar permisos que no tenga." },
+  { id: "manage_server", group: "general", label: "Administrar el servidor", help: "Cambiar el nombre, el ícono y generar un link de invitación nuevo." },
+  { id: "create_invite", group: "members", label: "Crear invitación", help: "Invitar gente nueva al servidor." },
+  { id: "kick_members", group: "members", label: "Expulsar miembros", help: "Sacar del servidor a quien tenga un rol más bajo." },
+  { id: "ban_members", group: "members", label: "Banear miembros", help: "Sacar y prohibir volver a quien tenga un rol más bajo, y ver la lista de baneados." },
+  { id: "send_messages", group: "text", label: "Enviar mensajes", help: "Escribir en los canales de texto." },
+  { id: "add_reactions", group: "text", label: "Añadir reacciones", help: "Reaccionar con emojis a los mensajes." },
+  { id: "attach_files", group: "text", label: "Adjuntar archivos", help: "Subir imágenes a los mensajes." },
+  { id: "mention_everyone", group: "text", label: "Mencionar @everyone", help: "Avisar a todos los miembros a la vez." },
+  { id: "manage_messages", group: "text", label: "Administrar mensajes", help: "Borrar mensajes de otras personas y fijar mensajes." },
+  { id: "connect", group: "voice", label: "Conectarse", help: "Entrar a los canales de voz." },
+  { id: "speak", group: "voice", label: "Hablar", help: "Que lo escuchen en los canales de voz. Sin esto entra silenciado." },
+  { id: "video", group: "voice", label: "Video", help: "Prender la cámara en los canales de voz." },
+  { id: "mute_members", group: "voice", label: "Silenciar miembros", help: "Silenciar a otros en todos los canales de voz del servidor." },
+  { id: "deafen_members", group: "voice", label: "Ensordecer miembros", help: "Hacer que otros no escuchen nada en los canales de voz del servidor." },
+  { id: "move_members", group: "voice", label: "Mover miembros", help: "Pasar gente de un canal de voz a otro (arrastrándola)." },
+  { id: "administrator", group: "advanced", label: "Administrador", help: "Tiene TODOS los permisos y se saltea los permisos de canal. Es peligroso: dalo con cuidado." },
+];
+
+/** Lo que tiene todo el mundo por defecto en un servidor nuevo (@everyone). */
+export const EVERYONE_DEFAULT: Perm[] = ["view_channel", "create_invite", "send_messages", "add_reactions", "attach_files", "connect", "speak", "video"];
 
 export type Role = {
   id: string;
@@ -121,13 +151,18 @@ export type Ban = { server_id: string; user_id: string; reason: string; banned_b
 export type Relation = { status: "friend" | "incoming" | "outgoing"; since: string };
 export type SettingsView = { kind: "user"; section: string } | { kind: "server"; serverId: string; section: string };
 
-export type ChanPerm = "view_channel" | "send_messages" | "add_reactions" | "attach_files";
-export const CHAN_PERMS: { id: ChanPerm; label: string; help: string }[] = [
-  { id: "view_channel", label: "Ver canales", help: "Quien no lo tenga no ve los canales de esta categoría ni sus mensajes." },
-  { id: "send_messages", label: "Enviar mensajes", help: "Escribir en los canales. Sin esto, los canales quedan de solo lectura." },
-  { id: "add_reactions", label: "Añadir reacciones", help: "Reaccionar con emojis a los mensajes." },
-  { id: "attach_files", label: "Adjuntar archivos", help: "Subir imágenes a los mensajes." },
+export type ChanPerm = "view_channel" | "send_messages" | "add_reactions" | "attach_files" | "connect" | "speak" | "video";
+export const CHAN_PERMS: { id: ChanPerm; label: string; help: string; kinds: ("text" | "voice")[] }[] = [
+  { id: "view_channel", label: "Ver canal", help: "Quien no lo tenga no ve el canal (ni sus mensajes o quién está conectado).", kinds: ["text", "voice"] },
+  { id: "send_messages", label: "Enviar mensajes", help: "Escribir en el canal. Sin esto, queda de solo lectura.", kinds: ["text"] },
+  { id: "add_reactions", label: "Añadir reacciones", help: "Reaccionar con emojis a los mensajes.", kinds: ["text"] },
+  { id: "attach_files", label: "Adjuntar archivos", help: "Subir imágenes a los mensajes.", kinds: ["text"] },
+  { id: "connect", label: "Conectarse", help: "Entrar al canal de voz.", kinds: ["voice"] },
+  { id: "speak", label: "Hablar", help: "Que lo escuchen. Sin esto entra silenciado.", kinds: ["voice"] },
+  { id: "video", label: "Video", help: "Prender la cámara.", kinds: ["voice"] },
 ];
 export type Override = { id: string; server_id: string; channel_id: string; role_id: string | null; allow: ChanPerm[]; deny: ChanPerm[] };
 
 export type Boost = { user_id: string; slot: number; server_id: string | null; boosted_at: string | null };
+
+export type VoiceMod = { server_id: string; user_id: string; muted: boolean; deafened: boolean };

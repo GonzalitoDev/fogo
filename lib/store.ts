@@ -5,7 +5,8 @@ import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { BUCKET, RECOVERY_LINK, SUPABASE_KEY, SUPABASE_URL, supabase } from "./supabase";
 import { forgetAccount, forgetSession, rememberProfile, rememberSession } from "./accounts";
 import { friendlyError, upsertMessage } from "./chat";
-import type { Ban, Boost, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
+import { EVERYONE_DEFAULT, PERMS } from "./types";
+import type { Ban, Boost, VoiceMod, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 
 /* ---------- store mínimo ---------- */
@@ -36,6 +37,7 @@ export type State = {
   toast: { id: number; text: string; tone: "info" | "error" } | null;
   badges: Record<string, string[]>; // userId -> insignias dadas a mano
   boosts: Boost[]; // boosts de servidor (cuentas Premium)
+  voiceMods: Record<string, Record<string, { muted: boolean; deafened: boolean }>>; // serverId -> userId -> silenciado/ensordecido por el servidor
   isAdmin: boolean;
   staffIds: string[]; // Equipo de Fogón (admins de la plataforma)
   presence: Record<string, Presence>; // userId -> conectado ahora (Realtime Presence)
@@ -90,6 +92,7 @@ const initial: State = {
   toast: null,
   badges: {},
   boosts: [],
+  voiceMods: {},
   isAdmin: false,
   staffIds: [],
   presence: {},
@@ -254,6 +257,7 @@ async function onSession(session: Session | null) {
   await loadAll();
   void loadBadges();
   void loadBoosts();
+  void loadVoiceMods();
   void loadFriends();
   try {
     setState({ sounds: localStorage.getItem("fogon:sounds") !== "0", micMuted: localStorage.getItem("fogon:mic") === "0" });
@@ -1010,7 +1014,7 @@ export async function findUser(username: string): Promise<Profile | null> {
 
 /* ---------- roles y permisos ---------- */
 
-export const ALL_PERMS: Perm[] = ["manage_server", "manage_channels", "manage_roles", "manage_messages", "kick_members", "ban_members", "mention_everyone"];
+export const ALL_PERMS: Perm[] = PERMS.map((p) => p.id);
 
 export function serverRoles(s: State, serverId: string): Role[] {
   return Object.values(s.roles)
@@ -1030,10 +1034,24 @@ export function topPosition(s: State, serverId: string, userId: string): number 
   return rolesOf(s, serverId, userId)[0]?.position ?? 0;
 }
 
+/** Permisos de alguien en un servidor (como Discord): @everyone + sus roles; dueño y Administrador tienen todo. */
+export function permsOf(s: State, serverId: string, userId: string): Set<Perm> {
+  const srv = s.servers[serverId];
+  if (!srv) return new Set();
+  if (srv.owner_id === userId) return new Set(ALL_PERMS);
+  const set = new Set<Perm>([...(srv.everyone_perms ?? EVERYONE_DEFAULT), ...rolesOf(s, serverId, userId).flatMap((r) => r.perms)]);
+  return set.has("administrator") ? new Set(ALL_PERMS) : set;
+}
+
 export function myPerms(s: State, serverId: string): Set<Perm> {
-  const me = s.me?.id ?? "";
-  if (s.servers[serverId]?.owner_id === me) return new Set(ALL_PERMS);
-  return new Set(rolesOf(s, serverId, me).flatMap((r) => r.perms));
+  return permsOf(s, serverId, s.me?.id ?? "");
+}
+
+export async function setEveryonePerms(serverId: string, perms: Perm[]) {
+  const { error } = await supabase.rpc("fogon_set_everyone_perms", { p_server: serverId, p_perms: perms });
+  if (error) throw error;
+  const { data } = await supabase.from("fogon_servers").select("*").eq("id", serverId).maybeSingle();
+  if (data) setState((st) => ({ servers: { ...st.servers, [serverId]: data as Server } }));
 }
 
 export function can(s: State, serverId: string | null | undefined, perm: Perm): boolean {
@@ -1272,6 +1290,7 @@ function startRealtime() {
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_boosts" }, () => boostsSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_voice_mods" }, () => void loadVoiceMods())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_admins" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_account_bans" }, (p) => {
       const r = (p.new ?? {}) as { user_id?: string; reason?: string };
@@ -1612,12 +1631,14 @@ function groupOverrides(rows: Override[]) {
 }
 
 /** Igual que fogon_channel_allows en la base: categoría y después canal; @everyone y después roles. */
-export function channelAllows(s: State, channelId: string, perm: ChanPerm): boolean {
+/** Permiso en un canal (como Discord): base del servidor y después @everyone y roles de la categoría y del canal. */
+export function channelAllowsFor(s: State, userId: string, channelId: string, perm: ChanPerm): boolean {
   const c = s.channels[channelId];
   if (!c || c.kind === "dm" || !c.server_id) return true;
-  if (s.servers[c.server_id]?.owner_id === s.me?.id || can(s, c.server_id, "manage_channels")) return true;
-  const mine = new Set(s.memberRoles[c.server_id]?.[s.me?.id ?? ""] ?? []);
-  let ok = true;
+  const base = permsOf(s, c.server_id, userId);
+  if (s.servers[c.server_id]?.owner_id === userId || base.has("administrator")) return true;
+  const mine = new Set(s.memberRoles[c.server_id]?.[userId] ?? []);
+  let ok = base.has(perm);
   for (const lvl of [c.parent_id, c.id]) {
     if (!lvl) continue;
     const list = s.overrides[lvl] ?? [];
@@ -1628,8 +1649,32 @@ export function channelAllows(s: State, channelId: string, perm: ChanPerm): bool
     if (rs.some((o) => o.deny.includes(perm))) ok = false;
     if (rs.some((o) => o.allow.includes(perm))) ok = true;
   }
-  if (perm !== "view_channel" && ok) return channelAllows(s, channelId, "view_channel");
+  if (perm !== "view_channel" && ok) return channelAllowsFor(s, userId, channelId, "view_channel");
   return ok;
+}
+
+export function channelAllows(s: State, channelId: string, perm: ChanPerm): boolean {
+  return channelAllowsFor(s, s.me?.id ?? "", channelId, perm);
+}
+
+/* ---------- silenciar / ensordecer en el servidor ---------- */
+
+export async function loadVoiceMods() {
+  const { data, error } = await supabase.from("fogon_voice_mods").select("server_id,user_id,muted,deafened");
+  if (error) return console.warn(error);
+  const map: State["voiceMods"] = {};
+  for (const r of (data ?? []) as VoiceMod[]) (map[r.server_id] ??= {})[r.user_id] = { muted: r.muted, deafened: r.deafened };
+  setState({ voiceMods: map });
+}
+
+export function voiceModOf(s: State, serverId: string | null | undefined, userId: string) {
+  return (serverId && s.voiceMods[serverId]?.[userId]) || { muted: false, deafened: false };
+}
+
+export async function setVoiceMod(serverId: string, userId: string, patch: { muted?: boolean; deafened?: boolean }) {
+  const { error } = await supabase.rpc("fogon_voice_mod", { p_server: serverId, p_user: userId, p_mute: patch.muted ?? null, p_deafen: patch.deafened ?? null });
+  if (error) throw error;
+  await loadVoiceMods();
 }
 
 /** Cambia un permiso para @everyone (roleId null) o un rol: permitir, denegar o heredar. */

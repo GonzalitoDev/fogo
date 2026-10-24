@@ -237,7 +237,7 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
     />
   );
   const items: MenuItem[] = [
-    { label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) },
+    ...(can(state, server.id, "create_invite") ? ([{ label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) }] as MenuItem[]) : []),
     { label: "Boostear servidor", icon: <BoostGem />, onClick: () => dialogs.boost(server) },
     ...(canServer || canRoles || can(state, server.id, "ban_members")
       ? ([{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }] as MenuItem[])
@@ -274,9 +274,11 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{server.name}</span>
           <Icon name={menu ? "close" : "chevron"} />
         </button>
-        <button className="icon-btn" onClick={() => dialogs.invite(server)} aria-label="Invitar gente" title="Invitar gente">
-          <Icon name="link" />
-        </button>
+        {can(state, server.id, "create_invite") && (
+          <button className="icon-btn" onClick={() => dialogs.invite(server)} aria-label="Invitar gente" title="Invitar gente">
+            <Icon name="link" />
+          </button>
+        )}
       </div>
       <div className="side-list">
         {tree.loose.map(row)}

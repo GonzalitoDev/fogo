@@ -1,25 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { channelAllows, go, setBotsListen, setMicMuted, toast, setSounds, setState, useStore, type State } from "@/lib/store";
+import { can, channelAllows, go, setBotsListen, setMicMuted, setVoiceMod, toast, setSounds, setState, useStore, voiceModOf, type State } from "@/lib/store";
+import { friendlyError } from "@/lib/chat";
 import type { Channel, Profile } from "@/lib/types";
 import { joinVoice, leaveVoice, moveMember, setNoiseMode } from "@/lib/voice";
 import { listenSupported } from "@/lib/botListen";
 import { addTrack, pause, searchMusic, setMusicVolume, skip, stopMusic } from "@/lib/music";
 import type { MusicTrack } from "@/lib/store";
 import { Icon } from "./Icon";
-import { Avatar, Menu } from "./ui";
+import { Avatar, Menu, type MenuItem } from "./ui";
 import { BotTag } from "./Permissions";
 
-export type VoiceMember = { p: Profile; muted: boolean; deafened: boolean };
+export type VoiceMember = { p: Profile; muted: boolean; deafened: boolean; srvMuted?: boolean; srvDeafened?: boolean };
 
 /** Quiénes están en un canal de voz (de la presencia global). */
 export function voiceMembers(s: State, channelId: string): VoiceMember[] {
   const out: VoiceMember[] = [];
+  const sid = s.channels?.[channelId]?.server_id;
   for (const [uid, v] of [...Object.entries(s.voiceIn), ...Object.entries(s.botVoice ?? {})]) {
     if (v.ch !== channelId) continue;
     const p = s.profiles[uid];
-    if (p) out.push({ p, muted: v.muted, deafened: v.deafened });
+    const mod = sid ? s.voiceMods?.[sid]?.[uid] : undefined;
+    if (p) out.push({ p, muted: v.muted, deafened: v.deafened, srvMuted: !!mod?.muted, srvDeafened: !!mod?.deafened });
   }
   // yo apenas entro, antes de que vuelva la presencia
   if (s.voice?.channelId === channelId && s.me && !out.some((m) => m.p.id === s.me!.id)) out.push({ p: s.me, muted: s.micMuted || !s.sounds, deafened: !s.sounds });
@@ -34,18 +37,20 @@ function useVoiceMembers(channelId: string) {
   const micMuted = useStore((s) => s.micMuted);
   const sounds = useStore((s) => s.sounds);
   const botVoice = useStore((s) => s.botVoice);
+  const voiceMods = useStore((s) => s.voiceMods);
+  const channels = useStore((s) => s.channels);
   return useMemo(
-    () => voiceMembers({ voiceIn, botVoice, profiles, voice, me, micMuted, sounds } as State, channelId),
-    [voiceIn, botVoice, profiles, voice, me, micMuted, sounds, channelId],
+    () => voiceMembers({ voiceIn, botVoice, profiles, voice, me, micMuted, sounds, voiceMods, channels } as State, channelId),
+    [voiceIn, botVoice, profiles, voice, me, micMuted, sounds, voiceMods, channels, channelId],
   );
 }
 
 function MuteIcons({ m }: { m: VoiceMember }) {
-  if (!m.muted && !m.deafened) return null;
+  if (!m.muted && !m.deafened && !m.srvMuted && !m.srvDeafened) return null;
   return (
     <span className="vc-flags">
-      {m.muted && <Icon name="micOff" />}
-      {m.deafened && <Icon name="headphonesOff" />}
+      {(m.muted || m.srvMuted) && <Icon name="micOff" className={m.srvMuted ? "srv" : undefined} />}
+      {(m.deafened || m.srvDeafened) && <Icon name="headphonesOff" className={m.srvDeafened ? "srv" : undefined} />}
     </span>
   );
 }
@@ -64,7 +69,12 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)),
     [channels, c.server_id, c.id],
   );
-  const canMove = owner && targets.length > 0;
+  const st = useStore((s) => s);
+  const sid = c.server_id ?? "";
+  const canMove = can(st, sid, "move_members") && targets.length > 0;
+  const canMute = can(st, sid, "mute_members");
+  const canDeaf = can(st, sid, "deafen_members");
+  const canMenu = canMove || canMute || canDeaf;
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; uid: string } | null>(null);
@@ -125,7 +135,7 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
               }
               onDragEnd={canMove ? () => setDrag(null) : undefined}
               onContextMenu={
-                canMove
+                canMenu
                   ? (e) => {
                       e.preventDefault();
                       setMenu({ x: e.clientX, y: e.clientY, uid: m.p.id });
@@ -139,11 +149,11 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
                 {m.p.is_bot && <BotTag official={m.p.is_official} />}
                 <MuteIcons m={{ ...m, muted: m.muted && !speaking[m.p.id] }} />
               </button>
-              {canMove && (
+              {canMenu && (
                 <button
                   className="icon-btn vc-more"
-                  title="Mover a otro canal"
-                  aria-label={`Mover a ${m.p.display_name} a otro canal de voz`}
+                  title="Opciones de voz"
+                  aria-label={`Opciones de voz para ${m.p.display_name}`}
                   onClick={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
                     setMenu({ x: r.left, y: r.bottom + 6, uid: m.p.id });
@@ -158,10 +168,21 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
       )}
       {menu && (
         <Menu
-          label="Mover a otro canal de voz"
+          label="Opciones de voz"
           at={menu}
           onClose={() => setMenu(null)}
-          items={targets.map((t) => ({ label: t.name, icon: <Icon name="speaker" />, onClick: () => void moveMember(menu.uid, t.id) }))}
+          items={(() => {
+            const mod = voiceModOf(st, sid, menu.uid);
+            const run = (patch: { muted?: boolean; deafened?: boolean }) => setVoiceMod(sid, menu.uid, patch).catch((e) => toast(friendlyError(e), "error"));
+            const items: MenuItem[] = [];
+            if (canMute) items.push({ label: mod.muted ? "Quitar silencio del servidor" : "Silenciar en el servidor", icon: <Icon name="micOff" />, danger: !mod.muted, onClick: () => void run({ muted: !mod.muted }) });
+            if (canDeaf) items.push({ label: mod.deafened ? "Quitar ensordecido del servidor" : "Ensordecer en el servidor", icon: <Icon name="headphonesOff" />, danger: !mod.deafened, onClick: () => void run({ deafened: !mod.deafened }) });
+            if (canMove) {
+              if (items.length) items.push("sep");
+              items.push(...targets.map((t) => ({ label: `Mover a ${t.name}`, icon: <Icon name="speaker" />, onClick: () => void moveMember(menu.uid, t.id) })));
+            }
+            return items;
+          })()}
         />
       )}
     </>

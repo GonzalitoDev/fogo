@@ -5,7 +5,7 @@ import { botSay } from "./botListen";
 import { tuneOpus } from "./opus";
 import { boostLevel, voiceBitrate } from "./boost";
 import { supabase } from "./supabase";
-import { getState, retrackPresence, setState, subscribe, toast } from "./store";
+import { channelAllows, channelAllowsFor, getState, retrackPresence, setState, subscribe, toast, voiceModOf } from "./store";
 
 /** Calidad de voz del servidor donde estoy (sube con los boosts). */
 function bitrateNow(): number {
@@ -206,7 +206,8 @@ function meter(stream: MediaStream, uid: string): () => void {
       let sum = 0;
       for (const v of buf) sum += (v - 128) * (v - 128);
       const rms = Math.sqrt(sum / buf.length);
-      const muted = uid === meId() && (getState().micMuted || !getState().sounds);
+      const st = getState();
+      const muted = (uid === meId() && (st.micMuted || !st.sounds)) || voiceForced(st, uid).muted;
       if (rms > 6 && !muted) {
         quietSince = 0;
         setSpeaking(uid, true);
@@ -232,12 +233,23 @@ function send(msg: Sig) {
   void chan?.send({ type: "broadcast", event: "sig", payload: msg });
 }
 
+/** Lo que impone el servidor (como Discord): sin permiso de Hablar o silenciado / ensordecido por un moderador. */
+export function voiceForced(s = getState(), uid = meId()) {
+  const v = s.voice;
+  if (!v) return { muted: false, deafened: false, noSpeak: false };
+  const mod = voiceModOf(s, v.serverId, uid);
+  const noSpeak = !channelAllowsFor(s, uid, v.channelId, "speak");
+  return { muted: mod.muted || mod.deafened || noSpeak, deafened: mod.deafened, noSpeak };
+}
+
 function applyLocalMute() {
   const s = getState();
-  const off = s.micMuted || !s.sounds;
+  const forced = voiceForced(s);
+  const off = s.micMuted || !s.sounds || forced.muted;
   local?.getAudioTracks().forEach((t) => (t.enabled = !off));
   raw?.getAudioTracks().forEach((t) => (t.enabled = !off));
-  for (const p of peers.values()) p.audio.muted = !s.sounds;
+  // a los que el servidor silenció no se los escucha (aunque su navegador mande audio)
+  for (const [uid, p] of peers) p.audio.muted = !s.sounds || forced.deafened || voiceForced(s, uid).muted;
 }
 
 /* ---------- conexiones ---------- */
@@ -358,6 +370,7 @@ export async function joinVoice(channelId: string) {
   if (!ch || ch.kind !== "voice" || !ch.server_id) return;
   if (s.voice?.channelId === channelId) return;
   if (!voiceSupported()) return toast("Tu navegador no permite llamadas de voz.", "error");
+  if (!channelAllows(s, channelId, "connect")) return toast("No tenés permiso para conectarte a este canal de voz.", "error");
   await leaveVoice(true);
   const seq = ++joinSeq;
   setState({ voice: { channelId, serverId: ch.server_id, status: "connecting" } });
@@ -496,8 +509,13 @@ if (typeof window !== "undefined") {
   let last = "";
   subscribe(() => {
     const s = getState();
-    const k = `${s.micMuted}|${s.sounds}`;
+    const f = voiceForced(s);
+    const others = s.voice ? [...peers.keys()].map((u) => (voiceForced(s, u).muted ? u : "")).join(",") : "";
+    const k = `${s.micMuted}|${s.sounds}|${f.muted}|${f.deafened}|${others}`;
     if (k !== last) {
+      if (s.voice && last && f.muted && !last.split("|")[2].includes("true")) {
+        toast(f.noSpeak ? "No tenés permiso para hablar en este canal: entraste silenciado." : f.deafened ? "Un moderador te ensordeció en este servidor." : "Un moderador te silenció en este servidor.");
+      }
       last = k;
       applyLocalMute();
     }
