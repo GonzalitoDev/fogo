@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { friendlyError } from "@/lib/chat";
-import { deleteRole, myPerms, rolesOf, saveRole, serverRoles, setEveryonePerms, setMemberRole, topPosition, useStore } from "@/lib/store";
+import { deleteRole, myPerms, reorderRoles, rolesOf, saveRole, serverRoles, setEveryonePerms, setMemberRole, toast, topPosition, useStore } from "@/lib/store";
 import { EVERYONE_DEFAULT, PERM_GROUPS, PERMS, type Perm, type Profile, type Role, type Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Avatar, COLORS, Confirm, Modal } from "./ui";
@@ -21,6 +21,35 @@ export function RolesDialog({ server, onClose }: { server: Server; onClose: () =
   const myTop = topPosition(state, server.id, state.me?.id ?? "");
   const [editing, setEditing] = useState<Partial<Role> | null>(null);
   const [everyone, setEveryone] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  // orden en pantalla: el que guardé recién (hasta que vuelva de la base) o el de la base
+  const shown = useMemo(() => {
+    if (!optimistic) return roles;
+    const fixed = roles.filter((r) => r.position >= myTop);
+    const byId = new Map(roles.map((r) => [r.id, r]));
+    return [...fixed, ...optimistic.map((id) => byId.get(id)).filter((r): r is Role => !!r)];
+  }, [roles, optimistic, myTop]);
+  const movable = shown.filter((r) => r.position < myTop).map((r) => r.id);
+  const move = async (id: string, to: number) => {
+    const from = movable.indexOf(id);
+    if (from < 0 || to < 0 || to >= movable.length || from === to) return;
+    const next = [...movable];
+    next.splice(from, 1);
+    next.splice(to, 0, id);
+    setOptimistic(next);
+    setBusy(true);
+    try {
+      await reorderRoles(server.id, next);
+    } catch (e) {
+      toast(friendlyError(e), "error");
+    } finally {
+      setOptimistic(null);
+      setBusy(false);
+    }
+  };
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const ids of Object.values(state.memberRoles[server.id] ?? {})) for (const id of ids) c[id] = (c[id] ?? 0) + 1;
@@ -45,29 +74,69 @@ export function RolesDialog({ server, onClose }: { server: Server; onClose: () =
   return (
     <Modal label="Roles" onClose={onClose}>
       <h2>Roles de {server.name}</h2>
-      <p>Los roles dan permisos y color. El de arriba manda: solo podés editar y asignar roles que estén por debajo del tuyo.</p>
-      <div style={{ display: "grid", gap: 4 }}>
-        {roles.map((r) => {
+      <p>Los roles dan permisos y color. El de arriba manda: arrastralos (o usá las flechas) para ordenarlos. Solo podés mover, editar y asignar los que estén por debajo del tuyo.</p>
+      <div className="role-list" style={{ display: "grid", gap: 4 }}>
+        {shown.map((r) => {
           const editable = r.position < myTop;
+          const idx = movable.indexOf(r.id);
           return (
-            <button
+            <div
               key={r.id}
-              className="member"
-              onClick={() => editable && setEditing(r)}
-              disabled={!editable}
-              title={editable ? "Editar rol" : "Está a tu altura o más arriba: no lo podés editar"}
-              style={{ opacity: editable ? 1 : 0.6 }}
+              className={`role-item${dragId === r.id ? " dragging" : ""}${overId === r.id ? " drop" : ""}`}
+              draggable={editable && !busy}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", r.id);
+                e.dataTransfer.effectAllowed = "move";
+                setDragId(r.id);
+              }}
+              onDragEnd={() => {
+                setDragId(null);
+                setOverId(null);
+              }}
+              onDragOver={(e) => {
+                if (!dragId || !editable || dragId === r.id) return;
+                e.preventDefault();
+                setOverId(r.id);
+              }}
+              onDragLeave={() => setOverId((o) => (o === r.id ? null : o))}
+              onDrop={(e) => {
+                e.preventDefault();
+                const from = e.dataTransfer.getData("text/plain");
+                setOverId(null);
+                if (from && editable && from !== r.id) void move(from, movable.indexOf(r.id));
+              }}
             >
-              <RoleDot color={r.color} />
-              <span className="nm" style={{ color: r.color }}>
-                {r.name}
+              <span className={`role-grip${editable ? "" : " off"}`} aria-hidden="true" title={editable ? "Arrastrá para mover" : undefined}>
+                ⋮⋮
               </span>
-              <span className="hint">
-                {counts[r.id] ?? 0} {counts[r.id] === 1 ? "miembro" : "miembros"}
-                {r.auto_assign ? " · automático" : ""}
-              </span>
-              {editable && <Icon name="edit" />}
-            </button>
+              <button
+                className="member"
+                onClick={() => editable && setEditing(r)}
+                disabled={!editable}
+                title={editable ? "Editar rol" : "Está a tu altura o más arriba: no lo podés editar"}
+                style={{ opacity: editable ? 1 : 0.6, flex: 1, minWidth: 0 }}
+              >
+                <RoleDot color={r.color} />
+                <span className="nm" style={{ color: r.color }}>
+                  {r.name}
+                </span>
+                <span className="hint">
+                  {counts[r.id] ?? 0} {counts[r.id] === 1 ? "miembro" : "miembros"}
+                  {r.auto_assign ? " · automático" : ""}
+                </span>
+                {editable && <Icon name="edit" />}
+              </button>
+              {editable && (
+                <span className="role-arrows">
+                  <button className="icon-btn" disabled={busy || idx <= 0} onClick={() => void move(r.id, idx - 1)} aria-label={`Subir ${r.name}`} title="Subir">
+                    ↑
+                  </button>
+                  <button className="icon-btn" disabled={busy || idx >= movable.length - 1} onClick={() => void move(r.id, idx + 1)} aria-label={`Bajar ${r.name}`} title="Bajar">
+                    ↓
+                  </button>
+                </span>
+              )}
+            </div>
           );
         })}
         {!roles.length && <p className="hint">Todavía no hay roles. Creá uno, por ejemplo “Moderador”.</p>}

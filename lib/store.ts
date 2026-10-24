@@ -1079,6 +1079,13 @@ export async function saveRole(r: Partial<Role> & { server_id: string }) {
   return id;
 }
 
+/** Orden nuevo (de arriba a abajo) de los roles que puedo mover. */
+export async function reorderRoles(serverId: string, ids: string[]) {
+  const { error } = await supabase.rpc("fogon_reorder_roles", { p_server: serverId, p_ids: ids });
+  if (error) throw error;
+  await loadRoles();
+}
+
 export async function deleteRole(id: string) {
   const { error } = await supabase.from("fogon_roles").delete().eq("id", id);
   if (error) throw error;

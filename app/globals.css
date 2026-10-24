@@ -1447,3 +1447,12 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .pswitch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
 .everyone-row { margin-top: 8px; border-top: 1px solid var(--line, rgba(255,255,255,.07)); padding-top: 10px; }
 .vc-flags svg.srv { color: #f23f43; }
+
+/* ordenar roles */
+.role-item { display: flex; align-items: center; gap: 4px; border-radius: 8px; }
+.role-item.dragging { opacity: .4; }
+.role-item.drop { box-shadow: inset 0 2px 0 var(--accent); }
+.role-grip { width: 16px; flex: none; text-align: center; color: var(--ink-3); cursor: grab; letter-spacing: -3px; user-select: none; }
+.role-grip.off { visibility: hidden; }
+.role-arrows { display: flex; flex: none; }
+.role-arrows .icon-btn { width: 28px; height: 28px; font-size: 15px; }
