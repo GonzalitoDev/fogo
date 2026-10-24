@@ -50,6 +50,7 @@ export type State = {
   voicePeers: Record<string, "connecting" | "connected" | "failed">;
   noiseMode: "ia" | "navegador" | "off"; // supresión de ruido del micrófono
   voicePing: number | null; // ms de ida y vuelta promedio en la llamada
+  botVoice: Record<string, VoiceState>; // bots conectados a canales de voz (no tienen micrófono)
 };
 
 const initial: State = {
@@ -91,6 +92,7 @@ const initial: State = {
   voicePeers: {},
   noiseMode: "ia",
   voicePing: null,
+  botVoice: {},
 };
 
 let state: State = initial;
@@ -391,6 +393,7 @@ export async function loadAll() {
     supabase.from("fogon_channel_overrides").select("*"),
   ]);
   if (!overrides.error) setState({ overrides: groupOverrides(overrides.data as Override[]) });
+  void loadBotVoice();
   const err = servers.error || channels.error || members.error || dms.error || unread.error || roles.error || memberRoles.error;
   if (err) return fail(err);
   const profiles: Record<string, Profile> = { ...state.profiles };
@@ -421,6 +424,16 @@ export async function loadAll() {
 }
 
 type MemberRoleRow = { server_id: string; user_id: string; role_id: string };
+
+/** Bots sentados en canales de voz (los pone la base según la hora). */
+export async function loadBotVoice() {
+  const { data, error } = await supabase.from("fogon_bot_voice").select("bot_id,channel_id,muted,deafened").not("channel_id", "is", null);
+  if (error) return;
+  const map: Record<string, VoiceState> = {};
+  for (const r of data as { bot_id: string; channel_id: string; muted: boolean; deafened: boolean }[]) map[r.bot_id] = { ch: r.channel_id, muted: r.muted, deafened: r.deafened };
+  setState({ botVoice: map });
+  void ensureProfiles(Object.keys(map));
+}
 
 function rolesState(roles: Role[], rows: MemberRoleRow[]) {
   const mr: Record<string, Record<string, string[]>> = {};
@@ -1072,6 +1085,7 @@ function startRealtime() {
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_friends" }, () => friendsSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_channel_overrides" }, () => reloadSoon())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_bot_voice" }, () => void loadBotVoice())
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fogon_profiles" }, (p) => {
       const np = p.new as Profile;
       if (!state.profiles[np.id]) return;

@@ -6,13 +6,14 @@ import type { Channel, Profile } from "@/lib/types";
 import { joinVoice, leaveVoice, setNoiseMode } from "@/lib/voice";
 import { Icon } from "./Icon";
 import { Avatar } from "./ui";
+import { BotTag } from "./Permissions";
 
 export type VoiceMember = { p: Profile; muted: boolean; deafened: boolean };
 
 /** Quiénes están en un canal de voz (de la presencia global). */
 export function voiceMembers(s: State, channelId: string): VoiceMember[] {
   const out: VoiceMember[] = [];
-  for (const [uid, v] of Object.entries(s.voiceIn)) {
+  for (const [uid, v] of [...Object.entries(s.voiceIn), ...Object.entries(s.botVoice ?? {})]) {
     if (v.ch !== channelId) continue;
     const p = s.profiles[uid];
     if (p) out.push({ p, muted: v.muted, deafened: v.deafened });
@@ -29,9 +30,10 @@ function useVoiceMembers(channelId: string) {
   const me = useStore((s) => s.me);
   const micMuted = useStore((s) => s.micMuted);
   const sounds = useStore((s) => s.sounds);
+  const botVoice = useStore((s) => s.botVoice);
   return useMemo(
-    () => voiceMembers({ voiceIn, profiles, voice, me, micMuted, sounds } as State, channelId),
-    [voiceIn, profiles, voice, me, micMuted, sounds, channelId],
+    () => voiceMembers({ voiceIn, botVoice, profiles, voice, me, micMuted, sounds } as State, channelId),
+    [voiceIn, botVoice, profiles, voice, me, micMuted, sounds, channelId],
   );
 }
 
@@ -74,6 +76,7 @@ export function VoiceRow({ c, active, owner, onEdit, onPick }: { c: Channel; act
               <button onClick={() => setState({ fullProfile: m.p.id })}>
                 <Avatar p={m.p} size="xs" />
                 <span className="vc-name">{m.p.display_name}</span>
+                {m.p.is_bot && <BotTag />}
                 <MuteIcons m={m} />
               </button>
             </li>
@@ -176,8 +179,10 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
                   <Avatar p={m.p} size="lg" />
                   <span className="vc-tag">
                     {m.p.display_name}
+                    {m.p.is_bot && <BotTag />}
                     <MuteIcons m={m} />
                   </span>
+                  {m.p.is_bot && m.p.custom_status?.startsWith("🎮") && <span className="vc-activity">{m.p.custom_status}</span>}
                   {here && st && st !== "connected" && <span className="vc-state">{st === "failed" ? "Sin conexión" : "Conectando…"}</span>}
                 </button>
               );

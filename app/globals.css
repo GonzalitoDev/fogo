@@ -1065,3 +1065,5 @@ kbd { font-family: var(--font-ui); font-size: 12px; font-weight: 700; color: var
 .vc-panel-info b { white-space: nowrap; overflow: hidden; }
 .vc-ping { white-space: nowrap; flex: none; }
 .vc-panel { gap: 2px; }
+.vc-activity { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 4px; background: rgba(0, 0, 0, 0.55); font-size: 12px; font-weight: 600; color: #fff; }
+.vc-tag .bot-tag, .vc-roster .bot-tag { flex: none; }
