@@ -11,7 +11,8 @@ import { RolesDialog } from "./Roles";
 import { BansDialog } from "./Moderation";
 import { Avatar, InlineModal, useEscape } from "./ui";
 import { setNoiseMode, startMicTest, type MicTest, type NoiseMode } from "@/lib/voice";
-import { applyAppTheme, DECOS, EFFECTS, NAME_STYLES, THEMES } from "@/lib/premium";
+import { applyAppTheme, EFFECTS, NAME_STYLES, THEMES } from "@/lib/premium";
+import { DECO_COLLECTIONS, decoLabel, type AvatarDeco } from "@/lib/decos";
 import { ProfileView } from "./Profile";
 import { getState, updateProfile, type ProfilePatch } from "@/lib/store";
 import type { Profile } from "@/lib/types";
@@ -99,6 +100,7 @@ function UserSettings({ section }: { section: string }) {
     { group: "Ajustes de usuario" },
     { id: "account", label: "Mi cuenta" },
     { id: "profiles", label: "Perfiles" },
+    { id: "decorations", label: "Decoraciones 🎁" },
     { id: "privacy", label: "Privacidad y seguridad" },
     { group: "Fogón Premium" },
     { id: "premium", label: "Premium ✨" },
@@ -130,6 +132,7 @@ function UserSettings({ section }: { section: string }) {
           <ProfileDialog onClose={() => {}} />
         </>
       )}
+      {section === "decorations" && <DecorationShop />}
       {section === "privacy" && <Privacy />}
       {section === "premium" && <PremiumSettings />}
       {section === "appearance" && <Appearance />}
@@ -341,11 +344,92 @@ function Notifications() {
   );
 }
 
+/* ---------- Decoraciones de avatar (gratis, como la tienda de Discord) ---------- */
+
+function DecorationShop() {
+  const me = useStore((s) => s.me)!;
+  const [pick, setPick] = useState<AvatarDeco | null>((me.avatar_deco as AvatarDeco) ?? null);
+  const [busy, setBusy] = useState(false);
+  const current = (me.avatar_deco as AvatarDeco) ?? null;
+  const save = async (id: AvatarDeco | null) => {
+    setBusy(true);
+    try {
+      await updateProfile({ avatar_deco: id });
+      toast(id ? `🎁 Te pusiste «${decoLabel(id)}»` : "Sacaste la decoración");
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <h1>Decoraciones</h1>
+      <div className="deco-hero">
+        <div>
+          <b>🎁 Decoraciones de avatar</b>
+          <p>Un marco alrededor de tu foto que ven todos: en el chat, en la lista de miembros y en tu perfil. Todas son <b>gratis</b>.</p>
+        </div>
+      </div>
+      <div className="deco-layout">
+        <div className="deco-shop">
+          {DECO_COLLECTIONS.map((c) => (
+            <section key={c.id} className="deco-col">
+              <h3 className="settings-sub">
+                {c.title} <small>{c.desc}</small>
+              </h3>
+              <div className="deco-grid">
+                {c.items.map((d) => (
+                  <button key={d.id} type="button" className={`deco-card${pick === d.id ? " on" : ""}`} onClick={() => setPick(d.id)} aria-pressed={pick === d.id}>
+                    <span className="deco-stage">
+                      <Avatar p={{ ...me, avatar_deco: d.id }} size="lg" />
+                    </span>
+                    <span className="deco-name">{d.label}</span>
+                    <span className={`deco-price${current === d.id ? " using" : ""}`}>{current === d.id ? "En uso" : "Gratis"}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+        <aside className="deco-preview">
+          <h3 className="settings-sub">Vista previa</h3>
+          <div className="deco-preview-card">
+            <Avatar p={{ ...me, avatar_deco: pick }} size="xl" />
+            <b>{me.display_name}</b>
+            <span className="hint">{pick ? decoLabel(pick) : "Sin decoración"}</span>
+            <div className="deco-preview-small">
+              <Avatar p={{ ...me, avatar_deco: pick }} size="sm" />
+              <span>Así se ve en el chat</span>
+            </div>
+          </div>
+          <div className="deco-actions">
+            <button className="btn primary" disabled={busy || pick === current} onClick={() => void save(pick)}>
+              {pick === current ? "En uso" : pick ? "Usar decoración" : "Sacar decoración"}
+            </button>
+            {current && (
+              <button
+                className="btn ghost"
+                disabled={busy}
+                onClick={() => {
+                  setPick(null);
+                  void save(null);
+                }}
+              >
+                Sacar la que tengo
+              </button>
+            )}
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
 /* ---------- Fogón Premium ---------- */
 
 const PERKS = [
   ["✨", "Nombre con estilo", "Degradé, brillo o arcoíris, con tus colores."],
-  ["🔥", "Decoraciones de avatar", "Un marco animado alrededor de tu foto."],
   ["🎆", "Efectos de perfil", "Chispas, brasas, nieve y más cuando abren tu perfil."],
   ["🎨", "Temas de la app", "Cambiá los colores de todo Fogón y el color de acento."],
   ["💎", "Insignia Premium", "Para que todos sepan."],
@@ -419,20 +503,6 @@ function PremiumSettings() {
               )}
             </div>
           )}
-
-          <h3 className="settings-sub">Decoración del avatar</h3>
-          <div className="prem-tiles">
-            <button type="button" className={!view.avatar_deco ? "on" : ""} onClick={() => set({ avatar_deco: null })}>
-              <Avatar p={{ ...view, avatar_deco: null }} size="lg" />
-              <span>Ninguna</span>
-            </button>
-            {DECOS.map((d) => (
-              <button key={d.id} type="button" className={view.avatar_deco === d.id ? "on" : ""} onClick={() => set({ avatar_deco: d.id })}>
-                <Avatar p={{ ...view, avatar_deco: d.id }} size="lg" />
-                <span>{d.label}</span>
-              </button>
-            ))}
-          </div>
 
           <h3 className="settings-sub">Efecto del perfil</h3>
           <div className="prem-tiles fx">

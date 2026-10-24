@@ -2,7 +2,7 @@
 import type { Profile } from "./types";
 
 export type NameStyle = "gradiente" | "brillo" | "arcoiris";
-export type AvatarDeco = "fuego" | "corona" | "neon" | "corazones" | "estrellas" | "hojas";
+export type { AvatarDeco } from "./decos";
 export type ProfileEffect = "chispas" | "nieve" | "corazones" | "brasas" | "estrellas";
 export type AppTheme = "medianoche" | "atardecer" | "aurora" | "fogon" | "rosa" | "oceano" | "bosque";
 
@@ -10,15 +10,6 @@ export const NAME_STYLES: { id: NameStyle; label: string }[] = [
   { id: "gradiente", label: "Degradé" },
   { id: "brillo", label: "Brillo" },
   { id: "arcoiris", label: "Arcoíris" },
-];
-
-export const DECOS: { id: AvatarDeco; label: string }[] = [
-  { id: "fuego", label: "Fuego" },
-  { id: "corona", label: "Corona" },
-  { id: "neon", label: "Neón" },
-  { id: "corazones", label: "Corazones" },
-  { id: "estrellas", label: "Estrellas" },
-  { id: "hojas", label: "Hojas" },
 ];
 
 export const EFFECTS: { id: ProfileEffect; label: string }[] = [

@@ -5,6 +5,7 @@ import { initials } from "@/lib/chat";
 import type { Presence, Profile } from "@/lib/types";
 import { mediaUrl } from "@/lib/store";
 import { Ember } from "./Icon";
+import { AvatarDecoration } from "./Deco";
 
 export const COLORS = ["#e07a3f", "#d4a72c", "#4f9d69", "#2f9c95", "#3f7fd1", "#7a63d6", "#c4569b", "#d0504a", "#6b7b77"];
 
@@ -15,7 +16,7 @@ export function Avatar({ p, size = "md", status, src: override }: { p?: Profile 
   return (
     <span className={`avatar ${size === "md" ? "" : size}${src && !broken ? " has-img" : ""}`} style={{ ["--c" as string]: p?.color ?? "#6b7b77" }} aria-hidden="true">
       {p?.is_official ? <Ember className="official-ember" /> : src && !broken ? <img src={src} alt="" draggable={false} onError={() => setBroken(true)} /> : initials(p?.display_name ?? "?")}
-      {p?.premium && p.avatar_deco && size !== "xs" && <span className={`deco deco-${p.avatar_deco}`} aria-hidden="true" />}
+      {p?.avatar_deco && size !== "xs" && <AvatarDecoration id={p.avatar_deco} />}
       {status && <span className={`status-dot s-${status}`} title={STATUS_LABEL[status]} />}
     </span>
   );
