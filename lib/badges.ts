@@ -1,5 +1,5 @@
 // Insignias al estilo Discord. Las "a mano" las da el admin; "pionero" sale sola por la fecha de la cuenta.
-export type BadgeId = "fundador" | "staff" | "moderador" | "cazabugs" | "dev" | "artista" | "vip" | "embajador" | "premium" | "pionero";
+export type BadgeId = "fundador" | "staff" | "moderador" | "cazabugs" | "dev" | "artista" | "vip" | "embajador" | "betatester" | "premium" | "pionero";
 
 export const BADGES: Record<BadgeId, { label: string; desc: string; color: string; auto?: boolean }> = {
   fundador: { label: "Creador de Fogón", desc: "Hizo Fogón con sus propias manos.", color: "#f2a531" },
@@ -10,12 +10,13 @@ export const BADGES: Record<BadgeId, { label: string; desc: string; color: strin
   artista: { label: "Artista", desc: "Hace arte, música o diseño.", color: "#ff6fa8" },
   vip: { label: "VIP", desc: "Persona muy importante del fogón.", color: "#e6b800" },
   embajador: { label: "Embajador", desc: "Trajo 3 amigos o más a la Comunidad de Fogón.", color: "#eb459e" },
+  betatester: { label: "Beta tester", desc: "Probó Fogón antes que nadie y ayudó a mejorarlo.", color: "#00b0f4" },
   premium: { label: "Fogón Premium", desc: "Tiene Fogón Premium: nombre con estilo, decoraciones, efectos y temas.", color: "#ff73fa", auto: true },
   pionero: { label: "Pionero", desc: "Se sumó a Fogón en su primer mes.", color: "#e07a3f", auto: true },
 };
 
 /** Orden en que se muestran (como en Discord, las más importantes primero). */
-export const ORDER: BadgeId[] = ["fundador", "staff", "moderador", "dev", "cazabugs", "artista", "vip", "embajador", "premium", "pionero"];
+export const ORDER: BadgeId[] = ["fundador", "staff", "moderador", "dev", "cazabugs", "artista", "vip", "embajador", "betatester", "premium", "pionero"];
 export const GRANTABLE = ORDER.filter((b) => !BADGES[b].auto);
 
 /** Fogón salió el 22/10/2026: quien creó su perfil antes del 22/11/2026 es pionero. */
