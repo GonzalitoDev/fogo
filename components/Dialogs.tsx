@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { mapDiscordTemplate, parseDiscordLink, type DiscordPreview } from "@/lib/discord";
 import { friendlyError, initials, slugChannel } from "@/lib/chat";
 import {
+  applyStructure,
   applyTemplate,
   createServer,
+  createServerFromStructure,
+  fetchDiscordTemplate,
   deleteChannel,
   deleteServer,
   findUser,
@@ -58,18 +62,37 @@ function codeFrom(input: string): string {
 
 export function CreateServerDialog({ onClose }: { onClose: () => void }) {
   const me = useStore((s) => s.me);
-  const [tab, setTab] = useState<"create" | "join">("create");
+  const [tab, setTab] = useState<"create" | "join" | "discord">("create");
   const [name, setName] = useState(`El servidor de ${me?.display_name ?? "yo"}`);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [templates, setTemplates] = useState<ServerTemplate[] | null>(null);
   const [tpl, setTpl] = useState<string | null>(null);
+  const [dcode, setDcode] = useState("");
+  const [dprev, setDprev] = useState<DiscordPreview | null>(null);
+  const [dname, setDname] = useState("");
+  const [dfetch, setDfetch] = useState(false);
   useEffect(() => {
     void loadTemplates()
       .then(setTemplates)
       .catch(() => setTemplates([]));
   }, []);
+  const bringDiscord = async () => {
+    const code = parseDiscordLink(dcode);
+    if (!code) return setErr("Pegá un link de plantilla de Discord (discord.new/…)");
+    setDfetch(true);
+    setErr("");
+    try {
+      const p = mapDiscordTemplate(await fetchDiscordTemplate(code));
+      setDprev(p);
+      setDname(p.name);
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setDfetch(false);
+    }
+  };
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setErr("");
@@ -90,6 +113,9 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
         </button>
         <button role="tab" aria-selected={tab === "join"} onClick={() => setTab("join")}>
           Unirme con invitación
+        </button>
+        <button role="tab" aria-selected={tab === "discord"} onClick={() => setTab("discord")}>
+          De Discord
         </button>
       </div>
       {tab === "create" ? (
@@ -131,7 +157,7 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </form>
-      ) : (
+      ) : tab === "join" ? (
         <form
           style={{ display: "grid", gap: 16 }}
           onSubmit={(e) => {
@@ -152,6 +178,52 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
             <button className="btn primary" disabled={busy || !code.trim()}>
               Unirme
             </button>
+          </div>
+        </form>
+      ) : (
+        <form
+          style={{ display: "grid", gap: 16 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!dprev) void bringDiscord();
+            else if (dname.trim()) void run(() => createServerFromStructure(dname.trim(), dprev.structure));
+          }}
+        >
+          <h2>Importar de Discord</h2>
+          <p>Pegá el link de una plantilla de Discord y la traemos con sus canales y roles. Después se usa como cualquier servidor de Fogón.</p>
+          <label className="field">
+            <span>Link o código de la plantilla</span>
+            <input className="input" autoFocus placeholder="https://discord.new/…" value={dcode} onChange={(e) => { setDcode(e.target.value); setDprev(null); }} />
+          </label>
+          {dprev && (
+            <div className="disc-preview">
+              <label className="field">
+                <span>Nombre del servidor</span>
+                <input className="input" maxLength={100} value={dname} onChange={(e) => setDname(e.target.value)} />
+              </label>
+              <b>{dprev.name}</b>
+              {dprev.description && <p className="hint">{dprev.description}</p>}
+              <p className="hint">
+                {dprev.counts.roles} roles · {dprev.counts.categories} categorías · {dprev.counts.text} canales de texto · {dprev.counts.voice} de voz
+                {dprev.counts.skipped ? ` · ${dprev.counts.skipped} saltados` : ""}
+              </p>
+              {dprev.sample.length > 0 && <p className="hint disc-sample">{dprev.sample.join(" · ")}</p>}
+            </div>
+          )}
+          <Err text={err} />
+          <div className="foot">
+            <button type="button" className="btn ghost" onClick={onClose}>
+              Cancelar
+            </button>
+            {dprev ? (
+              <button className="btn primary" disabled={busy || !dname.trim()}>
+                Crear servidor
+              </button>
+            ) : (
+              <button type="button" className="btn primary" disabled={dfetch || !dcode.trim()} onClick={() => void bringDiscord()}>
+                {dfetch ? "Trayendo…" : "Traer plantilla"}
+              </button>
+            )}
           </div>
         </form>
       )}
@@ -925,11 +997,41 @@ export function TemplatesDialog({ server, onClose }: { server: Server; onClose: 
   const [templates, setTemplates] = useState<ServerTemplate[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [dcode, setDcode] = useState("");
+  const [dprev, setDprev] = useState<DiscordPreview | null>(null);
+  const [dfetch, setDfetch] = useState(false);
   useEffect(() => {
     void loadTemplates()
       .then(setTemplates)
       .catch((e) => setErr(friendlyError(e)));
   }, []);
+  const bringDiscord = async () => {
+    const code = parseDiscordLink(dcode);
+    if (!code) return setErr("Pegá un link de plantilla de Discord (discord.new/…)");
+    setDfetch(true);
+    setErr("");
+    try {
+      setDprev(mapDiscordTemplate(await fetchDiscordTemplate(code)));
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setDfetch(false);
+    }
+  };
+  const applyDiscord = async () => {
+    if (!dprev) return;
+    setBusy("discord");
+    setErr("");
+    try {
+      const n = await applyStructure(server.id, dprev.structure);
+      toast(`Plantilla de Discord aplicada: ${n} ${n === 1 ? "cosa nueva" : "cosas nuevas"}`);
+      onClose();
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
   const apply = async (id: string) => {
     setBusy(id);
     setErr("");
@@ -959,6 +1061,30 @@ export function TemplatesDialog({ server, onClose }: { server: Server; onClose: 
         ))}
       </div>
       {!templates && !err && <p className="hint">Cargando plantillas…</p>}
+      <div className="disc-import">
+        <h3>Importar de Discord</h3>
+        <p className="hint">Pegá el link de una plantilla real de Discord (discord.new/…). Se agregan sus canales y roles a este servidor.</p>
+        <div className="copy-row">
+          <input className="input" placeholder="https://discord.new/…" value={dcode} onChange={(e) => { setDcode(e.target.value); setDprev(null); }} aria-label="Link de plantilla de Discord" />
+          <button type="button" className="btn" disabled={dfetch || !dcode.trim()} onClick={() => void bringDiscord()}>
+            {dfetch ? "Trayendo…" : "Traer"}
+          </button>
+        </div>
+        {dprev && (
+          <div className="disc-preview">
+            <b>{dprev.name}</b>
+            {dprev.description && <p className="hint">{dprev.description}</p>}
+            <p className="hint">
+              {dprev.counts.roles} roles · {dprev.counts.categories} categorías · {dprev.counts.text} canales de texto · {dprev.counts.voice} de voz
+              {dprev.counts.skipped ? ` · ${dprev.counts.skipped} saltados` : ""}
+            </p>
+            {dprev.sample.length > 0 && <p className="hint disc-sample">{dprev.sample.join(" · ")}</p>}
+            <button type="button" className="btn primary" disabled={!!busy} onClick={() => void applyDiscord()}>
+              {busy === "discord" ? "Aplicando…" : "Aplicar a este servidor"}
+            </button>
+          </div>
+        )}
+      </div>
       <div className="foot">
         <button type="button" className="btn ghost" onClick={onClose}>
           Cerrar

@@ -8,6 +8,7 @@ import { friendlyError, upsertMessage } from "./chat";
 import { EVERYONE_DEFAULT, PERMS } from "./types";
 import type { Ban, Boost, VoiceMod, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
+import type { ServerStructure } from "./discord";
 
 /* ---------- store mínimo ---------- */
 
@@ -894,6 +895,36 @@ export async function createServer(name: string, template?: string | null) {
 /** Agrega los canales y roles de una plantilla a un servidor que ya existe. */
 export async function applyTemplate(serverId: string, templateId: string) {
   const { data, error } = await supabase.rpc("fogon_apply_template", { p_server: serverId, p_template: templateId });
+  if (error) throw error;
+  await loadAll();
+  return Number(data) || 0;
+}
+
+/**
+ * Trae una plantilla real de Discord (discord.new/XXXX). pg_net responde asíncrono:
+ * primero se pide y después se consulta hasta que llega.
+ */
+export async function fetchDiscordTemplate(codeOrLink: string): Promise<unknown> {
+  const { data: id, error } = await supabase.rpc("fogon_discord_request", { p_code: codeOrLink });
+  if (error) throw error;
+  for (let i = 0; i < 30; i++) {
+    const { data, error: wait } = await supabase.rpc("fogon_discord_result", { p_id: Number(id) });
+    if (wait) throw wait;
+    if (data != null && (data as { pending?: boolean }).pending !== true) return data;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  throw new Error("Discord no contestó a tiempo, probá de nuevo");
+}
+
+export async function createServerFromStructure(name: string, structure: ServerStructure) {
+  const { data, error } = await supabase.rpc("fogon_create_server_with_structure", { p_name: name, p_structure: structure });
+  if (error) throw error;
+  await loadAll();
+  go({ kind: "server", serverId: data as string, channelId: null });
+}
+
+export async function applyStructure(serverId: string, structure: ServerStructure) {
+  const { data, error } = await supabase.rpc("fogon_apply_structure", { p_server: serverId, p_structure: structure });
   if (error) throw error;
   await loadAll();
   return Number(data) || 0;
