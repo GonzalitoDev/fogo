@@ -6,6 +6,7 @@ import { friendlyError } from "@/lib/chat";
 import type { Channel, Profile } from "@/lib/types";
 import { joinVoice, leaveVoice, moveMember, screenSupported, setNoiseMode, startScreenShare, stopScreenShare } from "@/lib/voice";
 import { GONZA_BOT, listenSupported, voiceModerated, voiceStaff } from "@/lib/botListen";
+import { getBotStream, pruneBotStreams, stopAllBotStreams } from "@/lib/botScreen";
 import { addTrack, pause, searchMusic, setMusicVolume, skip, stopMusic } from "@/lib/music";
 import type { MusicTrack } from "@/lib/store";
 import { Icon } from "./Icon";
@@ -334,6 +335,11 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
   const moderated = useStore((s) => here && voiceModerated(s));
   const staff = useStore((s) => voiceStaff(s));
   const modTest = useStore((s) => s.voiceModTest);
+  const botSharers = sharers.filter((p) => p.is_bot).map((p) => p.id).sort().join(",");
+  useEffect(() => {
+    pruneBotStreams(new Set(botSharers ? botSharers.split(",") : []));
+  }, [botSharers]);
+  useEffect(() => () => stopAllBotStreams(), [channel.id]);
   return (
     <section className="chat vc-pane">
       <header className="chat-head">
@@ -349,7 +355,12 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
             sharers={sharers}
             focus={focused}
             onFocus={setFocus}
-            streamOf={(uid) => (uid === me?.id ? localScreen : screens[uid]) ?? null}
+            streamOf={(uid) => {
+              if (uid === me?.id) return localScreen;
+              if (screens[uid]) return screens[uid];
+              const sharer = sharers.find((p) => p.id === uid);
+              return sharer?.is_bot ? getBotStream(sharer, channel.id) : null;
+            }}
             here={here}
           />
         )}
@@ -599,10 +610,12 @@ function ScreenStage({ sharers, focus, onFocus, streamOf, here }: { sharers: Pro
   const main = sharers.find((p) => p.id === focus) ?? sharers[0];
   const stream = main ? streamOf(main.id) : null;
   if (!main) return null;
+  // la pantalla de un bot se genera acá mismo, así que se puede ver sin entrar a la llamada
+  const watchable = here || !!main.is_bot;
   return (
     <div className="screen-stage">
       <div className="screen-main" ref={box}>
-        {!here ? (
+        {!watchable ? (
           <div className="screen-wait">Entrá a la voz para ver la transmisión de {main.display_name}.</div>
         ) : stream ? (
           <ScreenVideo stream={stream} />
@@ -612,7 +625,7 @@ function ScreenStage({ sharers, focus, onFocus, streamOf, here }: { sharers: Pro
         <span className="screen-label">
           <span className="live-pill">EN VIVO</span> {main.display_name}
         </span>
-        {here && stream && (
+        {watchable && stream && (
           <button
             className="icon-btn screen-full"
             onClick={() => (document.fullscreenElement ? void document.exitFullscreen() : void box.current?.requestFullscreen?.())}

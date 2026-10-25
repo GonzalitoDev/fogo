@@ -531,10 +531,10 @@ export async function loadMusic() {
 
 /** Bots sentados en canales de voz (los pone la base según la hora). */
 export async function loadBotVoice() {
-  const { data, error } = await supabase.from("fogon_bot_voice").select("bot_id,channel_id,muted,deafened").not("channel_id", "is", null);
+  const { data, error } = await supabase.from("fogon_bot_voice").select("bot_id,channel_id,muted,deafened,screen").not("channel_id", "is", null);
   if (error) return;
   const map: Record<string, VoiceState> = {};
-  for (const r of data as { bot_id: string; channel_id: string; muted: boolean; deafened: boolean }[]) map[r.bot_id] = { ch: r.channel_id, muted: r.muted, deafened: r.deafened };
+  for (const r of data as { bot_id: string; channel_id: string; muted: boolean; deafened: boolean; screen: boolean }[]) map[r.bot_id] = { ch: r.channel_id, muted: r.muted, deafened: r.deafened, screen: !!r.screen };
   setState({ botVoice: map });
   void ensureProfiles(Object.keys(map));
 }
