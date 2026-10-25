@@ -29,6 +29,9 @@ export type NavDialogs = {
   profile: () => void;
   switcher: () => void;
   inbox: () => void;
+  discover: () => void;
+  support: () => void;
+  publish: (s: Server) => void;
 };
 
 const initialsOf = (name: string) =>
@@ -63,6 +66,8 @@ function serverMenuItems(state: State, server: Server, dialogs: NavDialogs): Men
     ...(can(state, server.id, "create_invite") ? ([{ label: "Invitar gente", icon: <Icon name="link" />, accent: true, onClick: () => dialogs.invite(server) }] as MenuItem[]) : []),
     { label: "Boostear servidor", icon: <BoostGem />, onClick: () => dialogs.boost(server) },
     ...(canServer ? ([{ label: "Aplicar plantilla", icon: <Icon name="folder" />, onClick: () => dialogs.templates(server) }] as MenuItem[]) : []),
+    ...(canServer ? ([{ label: "Publicar en el directorio", icon: <Icon name="compass" />, onClick: () => dialogs.publish(server) }] as MenuItem[]) : []),
+    { label: "Soporte / reportar", icon: <Icon name="shield" />, onClick: dialogs.support },
     { label: "Marcar todo como leído", icon: <Icon name="check" />, onClick: () => void markAllRead(server.id).then(() => toast("Listo, todo marcado como leído")).catch(fail) },
     ...((canServer || canRoles || can(state, server.id, "ban_members")
       ? [{ label: "Ajustes del servidor", icon: <Icon name="gear" />, onClick: () => dialogs.serverSettings(server) }]
@@ -100,6 +105,11 @@ export function Rail({ dialogs }: { dialogs: NavDialogs; onNavigate?: () => void
           <Ember />
         </button>
         {dmCount > 0 && <span className="badge">{dmCount}</span>}
+      </div>
+      <div className="rail-item">
+        <button className="rail-btn" onClick={dialogs.discover} aria-label="Explorar comunidades" title="Explorar comunidades">
+          <Icon name="compass" />
+        </button>
       </div>
       <div className="rail-sep" />
       {list.map((s) => {
@@ -394,6 +404,9 @@ export function DmSidebar({ dialogs, onNavigate }: { dialogs: NavDialogs; onNavi
       <div className="side-head dm-head">
         <button className="find-btn" onClick={dialogs.switcher} aria-label="Buscar o iniciar una conversación">
           Buscar o iniciar una conversación
+        </button>
+        <button className="icon-btn" onClick={dialogs.support} aria-label="Soporte" title="Soporte">
+          <Icon name="shield" />
         </button>
         <button className="icon-btn" onClick={dialogs.inbox} aria-label="Bandeja: menciones y mensajes directos" title="Bandeja">
           <Icon name="bell" />

@@ -40,6 +40,10 @@ export type Server = {
   boost_count?: number;
   banner_color?: string | null;
   invite_vanity?: boolean;
+  is_public?: boolean;
+  is_official?: boolean;
+  description?: string;
+  tags?: string[];
 };
 
 export type ChannelKind = "text" | "category" | "dm" | "voice";

@@ -27,6 +27,7 @@ import { FullProfile } from "@/components/Profile";
 import { FriendsPage } from "@/components/Friends";
 import { loadFont, SettingsScreen } from "@/components/Settings";
 import { BansDialog } from "@/components/Moderation";
+import { DiscoverDialog, PublishDialog, SupportDialog } from "@/components/Discover";
 import { BoostDialog } from "@/components/Boost";
 import { VoicePane } from "@/components/Voice";
 import { applyAppTheme } from "@/lib/premium";
@@ -91,6 +92,9 @@ type Dialog =
   | { kind: "bans"; server: Server }
   | { kind: "boost"; server: Server }
   | { kind: "templates"; server: Server }
+  | { kind: "discover" }
+  | { kind: "support" }
+  | { kind: "publish"; server: Server }
   | { kind: "channel"; initial: Partial<Channel> & { server_id: string; kind: "text" | "category" | "voice" } }
   | { kind: "dm" }
   | { kind: "inbox" }
@@ -231,6 +235,9 @@ export default function Page() {
     bans: (server) => setDialog({ kind: "bans", server }),
     boost: (server) => setDialog({ kind: "boost", server }),
     templates: (server) => setDialog({ kind: "templates", server }),
+    discover: () => setDialog({ kind: "discover" }),
+    support: () => setDialog({ kind: "support" }),
+    publish: (server) => setDialog({ kind: "publish", server }),
     newDm: () => setDialog({ kind: "dm" }),
     inbox: () => setDialog({ kind: "inbox" }),
     profile: () => setState({ settings: { kind: "user", section: "account" } }),
@@ -309,6 +316,9 @@ export default function Page() {
       {dialog?.kind === "bans" && <BansDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "boost" && <BoostDialog serverId={dialog.server.id} onClose={close} />}
       {dialog?.kind === "templates" && <TemplatesDialog server={dialog.server} onClose={close} />}
+      {dialog?.kind === "discover" && <DiscoverDialog onClose={close} />}
+      {dialog?.kind === "support" && <SupportDialog onClose={close} />}
+      {dialog?.kind === "publish" && <PublishDialog server={dialog.server} onClose={close} />}
       {dialog?.kind === "channel" && <ChannelDialog initial={dialog.initial} onClose={close} />}
       {dialog?.kind === "dm" && <NewDmDialog onClose={close} />}
       {dialog?.kind === "inbox" && <MentionsDialog onClose={close} />}

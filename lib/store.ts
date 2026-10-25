@@ -9,6 +9,7 @@ import { EVERYONE_DEFAULT, PERMS } from "./types";
 import type { Ban, Boost, VoiceMod, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 import type { ServerStructure } from "./discord";
+import type { SupportDraft } from "./ai";
 
 /* ---------- store mínimo ---------- */
 
@@ -928,6 +929,59 @@ export async function applyStructure(serverId: string, structure: ServerStructur
   if (error) throw error;
   await loadAll();
   return Number(data) || 0;
+}
+export type CommunityCard = {
+  id: string;
+  name: string;
+  icon_url: string | null;
+  description: string;
+  tags: string[];
+  members: number;
+  boosts: number;
+  official: boolean;
+  invite_code: string;
+  already_member: boolean;
+};
+
+/** Busca comunidades públicas por nombre, descripción o tag. */
+export async function discoverCommunities(q = "", tag: string | null = null): Promise<CommunityCard[]> {
+  const { data, error } = await supabase.rpc("fogon_discover", { p_q: q, p_tag: tag });
+  if (error) throw error;
+  return ((data ?? []) as CommunityCard[]).map((c) => ({ ...c, members: Number(c.members) || 0, tags: c.tags ?? [] }));
+}
+
+/** Publica o saca el servidor del directorio público. */
+export async function setServerPublic(serverId: string, opts: { isPublic: boolean; description: string; tags: string[] }) {
+  const { error } = await supabase.rpc("fogon_set_server_public", {
+    p_server: serverId,
+    p_public: opts.isPublic,
+    p_description: opts.description,
+    p_tags: opts.tags,
+  });
+  if (error) throw error;
+  await loadAll();
+}
+
+export const MODMAIL_ID = "7c1d1f00-0000-4000-8000-00000000cd01";
+
+/** Manda el reporte al ModMail (abre el ticket con el staff) y te deja en ese privado. */
+export async function sendSupportReport(draft: SupportDraft, original: string, where: string) {
+  const cid = await openDm(MODMAIL_ID);
+  const body = [
+    "📮 **Reporte de soporte**",
+    `Categoría: ${draft.category} · Urgencia: ${draft.urgency}`,
+    where.trim() ? `Dónde: ${where.trim()}` : "",
+    "",
+    `**Resumen:** ${draft.summary}`,
+    "",
+    "---",
+    original.trim(),
+  ]
+    .filter((x) => x !== "")
+    .join("\n")
+    .slice(0, 3500);
+  await sendMessage(cid, body, [], null);
+  return cid;
 }
 
 export async function inviteInfo(code: string) {
