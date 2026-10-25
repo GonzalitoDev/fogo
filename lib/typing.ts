@@ -14,7 +14,7 @@ export function useTyping(channelId: string) {
   const last = useRef(0);
 
   useEffect(() => {
-    const c = supabase.channel(`typing:${channelId}`, { config: { broadcast: { self: false } } });
+    const c = supabase.channel(`typing:${channelId}`, { config: { private: true, broadcast: { self: false } } });
     c.on("broadcast", { event: "typing" }, ({ payload }) => {
       const uid = (payload as { user_id?: string })?.user_id;
       if (!uid || uid === getState().me?.id) return;

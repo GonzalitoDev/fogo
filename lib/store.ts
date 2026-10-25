@@ -386,7 +386,7 @@ function startPresence() {
   stopPresence();
   const id = meId();
   if (!id) return;
-  pres = supabase.channel("fogon-presence", { config: { presence: { key: id } } });
+  pres = supabase.channel("fogon-presence", { config: { private: true, presence: { key: id } } });
   pres
     .on("presence", { event: "sync" }, () => {
       const raw = pres!.presenceState() as Record<string, { status?: Presence; voice?: VoiceState }[]>;
