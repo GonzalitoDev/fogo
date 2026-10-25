@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 
 /*
  * Markdown chico y seguro (nunca HTML crudo):
- *   ```bloque```, `código`, **negrita**, *cursiva* / _cursiva_, ~~tachado~~, links http(s), @usuario
+ *   ```bloque```, `código`, **negrita**, *cursiva* / _cursiva_, ~~tachado~~, links http(s), @usuario,
+ *   emojis propios <:nombre:id> / <a:nombre:id>
  */
 
 export type Token =
@@ -14,11 +15,13 @@ export type Token =
   | { t: "strike"; c: Token[] }
   | { t: "link"; href: string }
   | { t: "mention"; username: string }
+  | { t: "emoji"; id: string; name: string; animated: boolean }
   | { t: "br" };
 
 type Rule = { re: RegExp; atWordStart: boolean; make: (m: RegExpExecArray) => Token };
 
 const RULES: Rule[] = [
+  { re: /^<(a?):([A-Za-z0-9_]{2,32}):([0-9a-f-]{36})>/, atWordStart: false, make: (m) => ({ t: "emoji", id: m[3], name: m[2], animated: m[1] === "a" }) },
   { re: /^`([^`\n]+)`/, atWordStart: false, make: (m) => ({ t: "code", v: m[1] }) },
   { re: /^\*\*([\s\S]+?)\*\*/, atWordStart: false, make: (m) => ({ t: "bold", c: inline(m[1]) }) },
   { re: /^~~([\s\S]+?)~~/, atWordStart: false, make: (m) => ({ t: "strike", c: inline(m[1]) }) },
@@ -81,7 +84,11 @@ export function parse(src: string): Token[] {
 
 export function render(
   tokens: Token[],
-  ctx: { mentionLabel: (username: string) => { label: string; me: boolean } | null },
+  ctx: {
+    mentionLabel: (username: string) => { label: string; me: boolean } | null;
+    /** dibuja un emoji propio; si no se pasa, queda como :nombre: */
+    emoji?: (id: string, name: string, key: string) => ReactNode;
+  },
   key = "k",
 ): ReactNode[] {
   return tokens.map((tk, i) => {
@@ -115,6 +122,8 @@ export function render(
             {tk.href}
           </a>
         );
+      case "emoji":
+        return ctx.emoji ? ctx.emoji(tk.id, tk.name, k) : `:${tk.name}:`;
       case "mention": {
         const info = ctx.mentionLabel(tk.username);
         if (!info) return `@${tk.username}`;
@@ -130,7 +139,9 @@ export function render(
 
 /** Solo emojis (hasta 3): se muestran grandes, como en los chats */
 export function isJumbo(src: string): boolean {
-  const s = src.trim();
+  const custom = src.match(/<a?:[A-Za-z0-9_]{2,32}:[0-9a-f-]{36}>/g)?.length ?? 0;
+  const s = src.replace(/<a?:[A-Za-z0-9_]{2,32}:[0-9a-f-]{36}>/g, "").trim();
+  if (custom) return custom <= 3 && (!s || (custom + (s.match(/\p{Extended_Pictographic}/gu)?.length ?? 0) <= 3 && isJumbo(s)));
   if (!s || s.length > 24) return false;
   return /^(\p{Extended_Pictographic}(️|‍\p{Extended_Pictographic}|\p{Emoji_Modifier})*\s*){1,3}$/u.test(s);
 }

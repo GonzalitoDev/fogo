@@ -194,3 +194,17 @@ describe("video de pantalla compartida", () => {
     expect(tuneVideo(out)).toBe(out);
   });
 });
+
+describe("emojis propios", () => {
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  it("lee <:nombre:id> y <a:nombre:id>", () => {
+    expect(inline(`hola <:mate:${id}>`)).toEqual([{ t: "text", v: "hola " }, { t: "emoji", id, name: "mate", animated: false }]);
+    expect(inline(`<a:fuego:${id}>`)[0]).toEqual({ t: "emoji", id, name: "fuego", animated: true });
+  });
+  it("solo emojis propios se ven grandes", () => {
+    expect(isJumbo(`<:mate:${id}>`)).toBe(true);
+    expect(isJumbo(`<:mate:${id}> 🔥`)).toBe(true);
+    expect(isJumbo(`<:mate:${id}> hola`)).toBe(false);
+    expect(isJumbo(`<:a1:${id}><:a2:${id}><:a3:${id}><:a4:${id}>`)).toBe(false);
+  });
+});

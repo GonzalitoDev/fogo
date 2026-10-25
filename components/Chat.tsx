@@ -5,7 +5,7 @@ import { ProfilePopout } from "./Profile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildRows, channelTree, dayLabel, firstUnreadId, friendlyError, timeShort } from "@/lib/chat";
 import { typingText, useTyping } from "@/lib/typing";
-import { can, channelAllows, fail, jumpToMessage, listPins, loadOlder, nameColor, presenceOf, searchMessages, setState, toast, useStore } from "@/lib/store";
+import { can, channelAllows, fail, go, timeoutOf, jumpToMessage, listPins, loadOlder, nameColor, presenceOf, searchMessages, setState, toast, useStore } from "@/lib/store";
 import type { Channel, Message as Msg, Profile } from "@/lib/types";
 import { Composer, type ComposerHandle } from "./Composer";
 import { Icon } from "./Icon";
@@ -13,6 +13,9 @@ import { Message } from "./Message";
 import { Avatar, STATUS_LABEL, useEscape } from "./ui";
 import { render, parse } from "@/lib/markdown";
 import { BotTag } from "./Permissions";
+import { TimeoutNotice } from "./Moderation";
+import { renderEmoji } from "./Emoji";
+import { CreateThreadDialog, ThreadBar, ThreadsPopout } from "./Threads";
 import { supabase } from "@/lib/supabase";
 
 const OWNER_ID = "e7809edc-8559-4df6-8d2b-1fffc7a27719";
@@ -86,6 +89,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
   const rows = useMemo(() => buildRows(list), [list]);
   const peer = peerId ? profiles[peerId] : undefined;
   const isDm = channel.kind === "dm";
+  const isThread = channel.kind === "thread";
   const title = isDm ? peer?.display_name ?? "Mensaje directo" : channel.name;
   const state = useStore((s) => s);
   const canModerate = can(state, channel.server_id, "manage_messages");
@@ -118,6 +122,15 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
   const jumpTo = useStore((s) => s.jumpTo);
   const [revealed, setRevealed] = useState<Record<string, true>>({});
   const [pins, setPins] = useState<{ x: number; y: number } | null>(null);
+  const [threadsPop, setThreadsPop] = useState<{ x: number; y: number } | null>(null);
+  const [threadFrom, setThreadFrom] = useState<Msg | null>(null);
+  const canThread = channel.kind === "text" && !!channel.server_id && channelAllows(state, channel.id, "create_threads") && channelAllows(state, channel.id, "send_messages");
+  // mensaje -> hilo que salió de él
+  const threadByStarter = useMemo(() => {
+    const map: Record<string, Channel> = {};
+    for (const c of Object.values(allChannels)) if (c.kind === "thread" && c.starter_id && c.parent_id === channel.id) map[c.starter_id] = c;
+    return map;
+  }, [allChannels, channel.id]);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<{ q: string; list: Msg[] | null; error?: string } | null>(null);
   const typing = useTyping(channel.id);
@@ -221,7 +234,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
   };
 
   const editLast = () => {
-    const last = [...list].reverse().find((m) => m.author_id === me?.id && !m.status);
+    const last = [...list].reverse().find((m) => m.author_id === me?.id && !m.status && !state.polls[m.id]);
     if (last) setEditing(last.id);
   };
 
@@ -251,7 +264,7 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         <button className="icon-btn mobile-only" onClick={onMenu} aria-label="Abrir navegación">
           <Icon name="menu" />
         </button>
-        {isDm ? <Avatar p={peer} size="xs" status={peer ? presenceOf(state, peer.id) : undefined} /> : <Icon name="hash" className="hash" />}
+        {isDm ? <Avatar p={peer} size="xs" status={peer ? presenceOf(state, peer.id) : undefined} /> : <Icon name={isThread ? "thread" : "hash"} className="hash" />}
         <h2>{title}</h2>
         {isDm && peer?.is_official && <BotTag official />}
         {isDm && peer?.is_official ? (
@@ -259,6 +272,19 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         ) : isDm && peer && <span className="head-status">{peer.custom_status || STATUS_LABEL[presenceOf(state, peer.id)]}</span>}
         {!isDm && channel.topic && <span className="topic">{channel.topic}</span>}
         <span className="spacer" />
+        {channel.kind === "text" && !isDm && (
+          <button
+            className={`icon-btn head-btn${threadsPop ? " on" : ""}`}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setThreadsPop(threadsPop ? null : { x: r.right, y: r.bottom + 8 });
+            }}
+            aria-label="Hilos"
+            title="Hilos"
+          >
+            <Icon name="thread" />
+          </button>
+        )}
         <button
           className={`icon-btn head-btn${pins ? " on" : ""}`}
           onClick={(e) => {
@@ -300,6 +326,9 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
           )}
         </form>
       </header>
+      {isThread && <ThreadBar thread={channel} />}
+      {threadsPop && <ThreadsPopout channel={channel} at={threadsPop} onClose={() => setThreadsPop(null)} />}
+      {threadFrom && <CreateThreadDialog channelId={channel.id} message={threadFrom} onClose={() => setThreadFrom(null)} />}
       {!online && <div className="offline">Sin conexión. Los mensajes nuevos van a aparecer cuando vuelva.</div>}
       {newCount > 0 && lastRead && (
         <div className="new-bar">
@@ -317,9 +346,9 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
           <div className="msgs-spacer" />
           {cm && !cm.hasMore && (
             <div className="welcome">
-              <div className="big">{isDm ? <Avatar p={peer} /> : <Icon name="hash" />}</div>
-              <h3>{isDm ? peer?.display_name ?? "Mensaje directo" : `Bienvenido a #${channel.name}`}</h3>
-              <p>{isDm && peer?.is_official ? "Este es el hilo oficial de Fogón: acá llegan las novedades y los avisos importantes." : isDm ? `Este es el comienzo de tu charla con @${peer?.username ?? "…"}.` : `Este es el comienzo del canal #${channel.name}.${channel.topic ? ` ${channel.topic}` : ""}`}</p>
+              <div className="big">{isDm ? <Avatar p={peer} /> : <Icon name={isThread ? "thread" : "hash"} />}</div>
+              <h3>{isDm ? peer?.display_name ?? "Mensaje directo" : isThread ? channel.name : `Bienvenido a #${channel.name}`}</h3>
+              <p>{isThread ? "Este es el comienzo del hilo." : isDm && peer?.is_official ? "Este es el hilo oficial de Fogón: acá llegan las novedades y los avisos importantes." : isDm ? `Este es el comienzo de tu charla con @${peer?.username ?? "…"}.` : `Este es el comienzo del canal #${channel.name}.${channel.topic ? ` ${channel.topic}` : ""}`}</p>
             </div>
           )}
           {(!cm || cm.loading) && <div className="loading-more">Cargando mensajes…</div>}
@@ -377,6 +406,8 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
                   onAuthor={(p, at) => setAuthorMenu({ p, at })}
                   onImage={(url, name) => setLightbox({ url, name })}
                   mentionLabel={mentionLabel}
+                  thread={threadByStarter[m.id]}
+                  onThread={canThread || threadByStarter[m.id] ? () => (threadByStarter[m.id] ? go({ kind: "server", serverId: channel.server_id!, channelId: threadByStarter[m.id].id }) : setThreadFrom(m)) : undefined}
                 />
               </div>
             );
@@ -390,6 +421,16 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
         <div className="composer blocked-composer">
           <div className="composer-box">No podés mandarle mensajes a un usuario que bloqueaste.</div>
         </div>
+      ) : channel.server_id && me && timeoutOf(state, channel.server_id, me.id) ? (
+        <div className="composer blocked-composer">
+          <TimeoutNotice serverId={channel.server_id} />
+        </div>
+      ) : isThread && channel.archived ? (
+        <div className="composer blocked-composer">
+          <div className="composer-box">
+            <Icon name="lock" /> Este hilo está archivado: se puede leer pero no escribir.
+          </div>
+        </div>
       ) : !canSend ? (
         <div className="composer blocked-composer">
           <div className="composer-box">
@@ -400,7 +441,8 @@ export function ChatPane({ channel, onMenu, membersOpen, onToggleMembers }: { ch
       <Composer
         ref={composer}
         channelId={channel.id}
-        placeholder={isDm ? `Mensaje para @${peer?.username ?? "…"}` : `Mensaje en #${channel.name}`}
+        canPoll={isDm || channelAllows(state, channel.id, "create_polls")}
+        placeholder={isDm ? `Mensaje para @${peer?.username ?? "…"}` : isThread ? `Mensaje en el hilo ${channel.name}` : `Mensaje en #${channel.name}`}
         people={people}
         everyone={canEveryone && !isDm}
         channels={serverChannels}
@@ -485,7 +527,7 @@ function MiniMessage({ m, mentionLabel, onClick }: { m: Msg; mentionLabel: (u: s
           {ch && ch.kind !== "dm" && <span className="mini-ch">#{ch.name}</span>}
           <time>{new Date(m.created_at).toLocaleString("es-AR", { day: "numeric", month: "numeric", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>
         </span>
-        <span className="mini-text">{m.content ? render(parse(m.content.slice(0, 400)), { mentionLabel }) : <i>Imagen</i>}</span>
+        <span className="mini-text">{m.content ? render(parse(m.content.slice(0, 400)), { mentionLabel, emoji: renderEmoji }) : <i>Imagen</i>}</span>
       </span>
     </button>
   );

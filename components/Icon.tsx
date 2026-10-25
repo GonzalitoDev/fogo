@@ -48,6 +48,10 @@ const P: Record<string, string> = {
   expand: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
   bell: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
   compass: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM16 8l-2.3 5.7L8 16l2.3-5.7z",
+  clock: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2",
+  thread: "M5 4h14v10H9l-4 4zM8 8h8M8 11h5",
+  poll: "M4 20V10M10 20V4M16 20v-8M22 20H2",
+  audit: "M9 4h6v3H9zM6 6H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1M8 12h8M8 16h5",
 };
 
 export function Icon({ name, className }: { name: keyof typeof P | string; className?: string }) {

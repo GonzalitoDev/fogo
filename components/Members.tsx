@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { can, fail, kickMember, nameColor, openDm, presenceOf, rolesOf, serverBoosters, topPosition, useStore } from "@/lib/store";
+import { can, fail, kickMember, nameColor, openDm, presenceOf, rolesOf, serverBoosters, setTimeoutFor, timeoutOf, toast, topPosition, useStore } from "@/lib/store";
 import type { Profile, Role, Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { MemberRolesDialog } from "./Roles";
@@ -9,7 +9,7 @@ import { Name } from "./Name";
 import { Avatar, Confirm, type MenuItem } from "./ui";
 import { BadgeRow } from "./Badges";
 import { ProfilePopout } from "./Profile";
-import { BanDialog } from "./Moderation";
+import { BanDialog, TimeoutDialog, untilText } from "./Moderation";
 import { BotTag } from "./Permissions";
 import { BoostGem } from "./Boost";
 
@@ -49,7 +49,9 @@ export function MemberList({ server }: { server: Server }) {
   const canAssign = can(state, server.id, "manage_roles");
   const canKick = can(state, server.id, "kick_members");
   const canBan = can(state, server.id, "ban_members");
+  const canTimeout = can(state, server.id, "moderate_members");
   const [ban, setBan] = useState<Profile | null>(null);
+  const [isolate, setIsolate] = useState<Profile | null>(null);
   const myTop = topPosition(state, server.id, me?.id ?? "");
 
   const items = (p: Profile): MenuItem[] => {
@@ -57,6 +59,18 @@ export function MemberList({ server }: { server: Server }) {
     if (p.id !== me?.id) out.push({ label: "Mandar mensaje directo", icon: <Icon name="chat" />, onClick: () => void openDm(p.id).catch(fail) });
     if (canAssign) out.push({ label: "Roles", icon: <Icon name="shield" />, onClick: () => setAssign(p) });
     const below = p.id !== me?.id && p.id !== server.owner_id && topPosition(state, server.id, p.id) < myTop;
+    const iso = timeoutOf(state, server.id, p.id);
+    const isAdminish = p.id === server.owner_id || rolesOf(state, server.id, p.id).some((r) => r.perms.includes("administrator"));
+    if (canTimeout && below && !isAdminish && !p.is_bot) {
+      out.push("sep");
+      if (iso)
+        out.push({
+          label: `Quitar aislamiento a ${p.display_name}`,
+          icon: <Icon name="clock" />,
+          onClick: () => void setTimeoutFor(server.id, p.id, 0).then(() => toast(`${p.display_name} ya no está aislado`), fail),
+        });
+      else out.push({ label: `Aislar a ${p.display_name}`, danger: true, icon: <Icon name="clock" />, onClick: () => setIsolate(p) });
+    }
     if (canKick && below) out.push("sep", { label: `Echar a ${p.display_name}`, danger: true, icon: <Icon name="door" />, onClick: () => setKick(p) });
     if (canBan && below) out.push({ label: `Banear a ${p.display_name}`, danger: true, icon: <Icon name="door" />, onClick: () => setBan(p) });
     if (!out.length) out.push({ label: "Editá tu perfil desde el engranaje de abajo", onClick: () => {} });
@@ -96,6 +110,11 @@ export function MemberList({ server }: { server: Server }) {
                         👑
                       </span>
                     )}
+                    {timeoutOf(state, server.id, p.id) && (
+                      <span className="member-timeout" title={`Aislado hasta ${untilText(timeoutOf(state, server.id, p.id)!.until)}`} aria-label="Aislado">
+                        ⏳
+                      </span>
+                    )}
                     <BadgeRow p={p} max={2} size={12} />
                   </span>
                   {p.custom_status && <span className="member-status">{p.custom_status}</span>}
@@ -114,6 +133,7 @@ export function MemberList({ server }: { server: Server }) {
           actions={items(menu.p).flatMap((it) => (it === "sep" || it.label.startsWith("Editá") || it.label.startsWith("Mandar") ? [] : [{ label: it.label, onClick: it.onClick, danger: it.danger }]))}
         />
       )}
+      {isolate && <TimeoutDialog server={server} member={isolate} onClose={() => setIsolate(null)} />}
       {ban && <BanDialog server={server} member={ban} onClose={() => setBan(null)} />}
       {assign && <MemberRolesDialog server={server} member={assign} onClose={() => setAssign(null)} />}
       {kick && (

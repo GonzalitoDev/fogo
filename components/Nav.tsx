@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { channelTree } from "@/lib/chat";
 import { can, channelAllows, deleteChannel, dmUnread, fail, go, linkTo, markAllRead, markRead, pendingIncoming, presenceOf, serverUnread, setSounds, setState, setStatus, toast, useStore, type State } from "@/lib/store";
 import type { Status } from "@/lib/types";
@@ -230,6 +230,18 @@ function MePanel({ dialogs }: { dialogs: NavDialogs }) {
   );
 }
 
+function ThreadRow({ t, active, unread, onPick }: { t: Channel; active: boolean; unread: State["unread"][string] | undefined; onPick: () => void }) {
+  return (
+    <div className={`chan thread-row${active ? " active" : ""}${unread?.unread && !active ? " unread" : ""}${t.archived ? " archived" : ""}`}>
+      <span className="thread-branch" aria-hidden />
+      <button className="label" onClick={onPick} aria-current={active ? "page" : undefined} title={t.archived ? "Hilo archivado" : "Hilo"}>
+        {t.name}
+      </button>
+      {unread && unread.mentions > 0 && !active && <span className="badge">{unread.mentions}</span>}
+    </div>
+  );
+}
+
 function ChannelRow({ c, active, owner, onEdit, onPick, unread }: { c: Channel; active: boolean; owner: boolean; onEdit: () => void; onPick: () => void; unread: State["unread"][string] | undefined }) {
   const priv = useStore((s) => [c.parent_id, c.id].some((id) => id && (s.overrides[id] ?? []).some((o) => !o.role_id && o.deny.includes("view_channel"))));
   const readOnly = useStore((s) => !channelAllows(s, c.id, "send_messages"));
@@ -286,6 +298,19 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
   const owner = can(state, server.id, "manage_channels");
   const level = boostLevel(server.boost_count);
   const tree = useMemo(() => channelTree(Object.values(channels), server.id), [channels, server.id]);
+  // hilos abiertos debajo de su canal: los tuyos, los que tienen algo sin leer, el que estás mirando o los que se movieron hace poco
+  const meId = state.me?.id;
+  const threadsBy = useMemo(() => {
+    const out: Record<string, Channel[]> = {};
+    const recent = Date.now() - 24 * 3600_000;
+    for (const t of Object.values(channels)) {
+      if (t.kind !== "thread" || t.server_id !== server.id || !t.parent_id) continue;
+      const show = t.id === place.channelId || (!t.archived && (t.owner_id === meId || unread[t.id]?.unread || new Date(t.last_message_at ?? t.created_at).getTime() > recent));
+      if (show) (out[t.parent_id] ??= []).push(t);
+    }
+    for (const k in out) out[k] = out[k].sort((a, b) => (b.last_message_at ?? b.created_at).localeCompare(a.last_message_at ?? a.created_at)).slice(0, 6);
+    return out;
+  }, [channels, server.id, place.channelId, meId, unread]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -307,16 +332,20 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
         onEdit={() => dialogs.channelEdit({ ...c, server_id: server.id, kind: "voice" })}
       />
     ) : (
-    <ChannelRow
-      key={c.id}
-      c={c}
-      active={place.channelId === c.id}
-      owner={owner}
-      unread={unread[c.id]}
-      onPick={() => pick(c)}
-      onEdit={() => dialogs.channelEdit({ ...c, server_id: server.id, kind: "text" })}
-    />
-  );
+      <Fragment key={c.id}>
+        <ChannelRow
+          c={c}
+          active={place.channelId === c.id}
+          owner={owner}
+          unread={unread[c.id]}
+          onPick={() => pick(c)}
+          onEdit={() => dialogs.channelEdit({ ...c, server_id: server.id, kind: "text" })}
+        />
+        {(threadsBy[c.id] ?? []).map((t) => (
+          <ThreadRow key={t.id} t={t} active={place.channelId === t.id} unread={unread[t.id]} onPick={() => pick(t)} />
+        ))}
+      </Fragment>
+    );
   const items: MenuItem[] = serverMenuItems(state, server, dialogs);
 
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { initials } from "@/lib/chat";
 import type { Presence, Profile } from "@/lib/types";
-import { mediaUrl } from "@/lib/store";
+import { emojiToken, mediaUrl, usableEmojis, useStore } from "@/lib/store";
 import { Ember } from "./Icon";
 import { AvatarDecoration } from "./Deco";
 
@@ -151,8 +151,22 @@ export const EMOJIS = [
   "🧉", "🍕", "⚽", "🎮", "💻", "🐛", "🚀", "☕",
 ];
 
-export function EmojiPicker(p: { at: { x: number; y: number }; onPick: (e: string) => void; onClose: () => void }) {
+export function EmojiPicker(p: { at: { x: number; y: number }; onPick: (e: string) => void; onClose: () => void; noCustom?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  const servers = useStore((s) => s.servers);
+  const emojis = useStore((s) => s.emojis);
+  const me = useStore((s) => s.me);
+  const place = useStore((s) => s.place);
+  const serverId = place.kind === "server" ? place.serverId : null;
+  const premium = !!me?.premium;
+  const groups = useMemo(
+    () => (p.noCustom ? [] : usableEmojis({ servers, emojis, me } as Parameters<typeof usableEmojis>[0], serverId)),
+    [servers, emojis, me, serverId, p.noCustom],
+  );
+  const pick = (e: string) => {
+    p.onPick(e);
+    p.onClose();
+  };
   const [pos, setPos] = useState({ left: p.at.x, top: p.at.y, ready: false });
   useEscape(p.onClose);
   useLayoutEffect(() => {
@@ -167,16 +181,25 @@ export function EmojiPicker(p: { at: { x: number; y: number }; onPick: (e: strin
     <>
       <div className="backdrop" onPointerDown={p.onClose} />
       <div ref={ref} className="emoji-pop" role="dialog" aria-label="Elegir reacción" style={{ left: pos.left, top: pos.top, visibility: pos.ready ? "visible" : "hidden" }}>
+        {groups.map((g) => (
+          <div key={g.server.id} className="emoji-sec">
+            <div className="emoji-sec-h">{g.server.name}</div>
+            <div className="emoji-grid">
+              {g.list.map((e) => (
+                <button key={e.id} onClick={() => pick(emojiToken(e))} aria-label={`:${e.name}:`} title={`:${e.name}:`}>
+                  <img className="cemoji" src={mediaUrl(e.path) ?? ""} alt="" draggable={false} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {!premium && !p.noCustom && Object.keys(emojis).some((id) => emojis[id].server_id !== serverId && servers[emojis[id].server_id]) && (
+          <div className="emoji-upsell">Con Fogón Premium usás los emojis de todos tus servidores.</div>
+        )}
+        {groups.length > 0 && <div className="emoji-sec-h">Emojis</div>}
         <div className="emoji-grid">
           {EMOJIS.map((e) => (
-            <button
-              key={e}
-              onClick={() => {
-                p.onPick(e);
-                p.onClose();
-              }}
-              aria-label={`Reaccionar con ${e}`}
-            >
+            <button key={e} onClick={() => pick(e)} aria-label={`Reaccionar con ${e}`}>
               {e}
             </button>
           ))}

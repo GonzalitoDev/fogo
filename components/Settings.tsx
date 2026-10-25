@@ -8,7 +8,8 @@ import type { Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
 import { RolesDialog } from "./Roles";
-import { BansDialog } from "./Moderation";
+import { AuditLog, BansDialog } from "./Moderation";
+import { EmojiSettings } from "./Emoji";
 import { Avatar, InlineModal, Modal, useEscape } from "./ui";
 import { setNoiseMode, startMicTest, type MicTest, type NoiseMode } from "@/lib/voice";
 import { applyAppTheme, EFFECTS, NAME_STYLES, THEMES } from "@/lib/premium";
@@ -906,9 +907,11 @@ function ServerSettings({ server, section }: { server: Server; section: string }
     { group: server.name },
     ...(can(st, server.id, "manage_server") ? [{ id: "overview", label: "Vista general" }] : []),
     ...(can(st, server.id, "manage_roles") ? [{ id: "roles", label: "Roles" }] : []),
+    { id: "emojis", label: "Emojis" },
     { group: "Gestión de miembros" },
     { id: "invites", label: "Invitaciones" },
     ...(can(st, server.id, "ban_members") ? [{ id: "bans", label: "Baneos" }] : []),
+    ...(can(st, server.id, "view_audit_log") ? [{ id: "audit", label: "Registro de auditoría" }] : []),
   ];
   const first = sections.find((x): x is { id: string; label: string } => "id" in x)?.id ?? "invites";
   const active = sections.some((x) => "id" in x && x.id === section) ? section : first;
@@ -938,6 +941,18 @@ function ServerSettings({ server, section }: { server: Server; section: string }
         <>
           <h1>Baneos</h1>
           <BansDialog server={server} onClose={close} />
+        </>
+      )}
+      {active === "audit" && (
+        <>
+          <h1>Registro de auditoría</h1>
+          <AuditLog server={server} />
+        </>
+      )}
+      {active === "emojis" && (
+        <>
+          <h1>Emojis</h1>
+          <EmojiSettings server={server} />
         </>
       )}
     </SettingsShell>

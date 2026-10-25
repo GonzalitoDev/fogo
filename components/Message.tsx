@@ -8,9 +8,12 @@ import { memo, useEffect, useRef, useState } from "react";
 import { friendlyError, groupReactions, MAX_LEN, stampLabel, timeShort } from "@/lib/chat";
 import { isJumbo, parse, render } from "@/lib/markdown";
 import { cachedUrl, deleteMessage, discardFailed, editMessage, linkTo, pinMessage, sendMessage, signedUrl, toast, toggleReaction, useStore } from "@/lib/store";
-import type { Attachment, Message as Msg, Profile, Reaction } from "@/lib/types";
+import type { Attachment, Channel, Message as Msg, Profile, Reaction } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Avatar, Confirm, copyText, EmojiPicker, Menu, type MenuItem } from "./ui";
+import { PollCard } from "./Poll";
+import { EmojiText, renderEmoji } from "./Emoji";
+import { ThreadChip } from "./Threads";
 
 type Props = {
   m: Msg;
@@ -29,6 +32,10 @@ type Props = {
   onAuthor: (p: Profile, at: { x: number; y: number }) => void;
   onImage: (url: string, name: string) => void;
   mentionLabel: (u: string) => { label: string; me: boolean } | null;
+  /** hilo que salió de este mensaje */
+  thread?: Channel;
+  /** abrir el hilo (o crearlo) */
+  onThread?: () => void;
 };
 
 function AttachmentImg({ a, onOpen }: { a: Attachment; onOpen: (url: string) => void }) {
@@ -72,7 +79,7 @@ function ReplyRef({ id, onJump, mentionLabel }: { id: string; onJump: (id: strin
     <button className="reply-ref" onClick={() => onJump(id)} aria-label={`Ir al mensaje de ${author?.display_name ?? "alguien"}`}>
       <Avatar p={author} size="xs" />
       <b style={{ color: author?.color }}>@{author?.display_name ?? "…"}</b>
-      <span>{render(parse(text), { mentionLabel })}</span>
+      <span>{render(parse(text), { mentionLabel, emoji: renderEmoji })}</span>
     </button>
   );
 }
@@ -141,14 +148,17 @@ function MessageView(p: Props) {
   const mentioned = m.mentions.includes(me);
   const jumbo = !m.attachments.length && isJumbo(m.content);
   const profiles = useStore((s) => s.profiles);
+  const poll = useStore((s) => s.polls[m.id]);
+  const pollServer = useStore((s) => s.channels[m.channel_id]?.server_id ?? null);
 
   const copy = (text: string, ok: string) => void copyText(text).then((done) => toast(done ? ok : "No se pudo copiar", done ? "info" : "error"));
   const items: MenuItem[] = [
     ...(m.content ? ([{ label: "Copiar texto", icon: <Icon name="check" />, onClick: () => copy(m.content, "Texto copiado") }] as MenuItem[]) : []),
     { label: "Copiar link", icon: <Icon name="link" />, onClick: () => copy(linkTo(m.channel_id, m.id), "Link copiado") },
+    ...(p.onThread ? ([{ label: p.thread ? "Abrir hilo" : "Crear hilo", icon: <Icon name="thread" />, onClick: p.onThread }] as MenuItem[]) : []),
     ...(p.canPin || mine || p.canModerate ? (["sep"] as MenuItem[]) : []),
     ...(p.canPin ? ([{ label: m.pinned_at ? "Desfijar" : "Fijar mensaje", icon: <Icon name="pin" />, onClick: () => void pinMessage(m, !m.pinned_at).catch((e) => toast(friendlyError(e), "error")) }] as MenuItem[]) : []),
-    ...(mine ? ([{ label: "Editar", icon: <Icon name="edit" />, onClick: () => p.onEdit(true) }] as MenuItem[]) : []),
+    ...(mine && !poll ? ([{ label: "Editar", icon: <Icon name="edit" />, onClick: () => p.onEdit(true) }] as MenuItem[]) : []),
     ...(mine || p.canModerate ? ([{ label: "Borrar", icon: <Icon name="trash" />, danger: true, onClick: () => setConfirm(true) }] as MenuItem[]) : []),
   ];
 
@@ -197,12 +207,14 @@ function MessageView(p: Props) {
             </time>
           </div>
         )}
-        {p.editing ? (
+        {poll ? (
+          <PollCard poll={poll} authorId={m.author_id} canVote={p.canReact !== false} serverId={pollServer} />
+        ) : p.editing ? (
           <EditBox m={m} onDone={() => p.onEdit(false)} />
         ) : (
           m.content && (
             <div className={`body${jumbo ? " jumbo" : ""}`}>
-              {render(parse(m.content), { mentionLabel: p.mentionLabel })}
+              {render(parse(m.content), { mentionLabel: p.mentionLabel, emoji: renderEmoji })}
               {m.edited_at && (
                 <span className="edited" title={`Editado ${stampLabel(m.edited_at)}`}>
                   (editado)
@@ -230,15 +242,16 @@ function MessageView(p: Props) {
                 className={`react${g.mine ? " mine" : ""}`}
                 onClick={() => p.canReact !== false && void toggleReaction(m.id, g.emoji)}
                 aria-pressed={g.mine}
-                aria-label={`${g.emoji} ${g.count}`}
+                aria-label={`${g.emoji.replace(/^<a?:([^:]+):.*$/, ":$1:")} ${g.count}`}
                 title={g.users.map((u) => profiles[u]?.display_name ?? "alguien").join(", ")}
               >
-                {g.emoji}
+                <EmojiText e={g.emoji} size={16} />
                 <b>{g.count}</b>
               </button>
             ))}
           </div>
         )}
+        {p.thread && <ThreadChip thread={p.thread} />}
         {m.status === "failed" && (
           <div className="retry">
             <span style={{ color: "var(--danger)" }}>No se pudo enviar.</span>
@@ -266,6 +279,11 @@ function MessageView(p: Props) {
           <button className="icon-btn" onClick={p.onReply} aria-label="Responder" title="Responder">
             <Icon name="reply" />
           </button>
+          {p.onThread && !p.thread && (
+            <button className="icon-btn" onClick={p.onThread} aria-label="Crear hilo" title="Crear hilo">
+              <Icon name="thread" />
+            </button>
+          )}
           <button
             className="icon-btn"
             onClick={(e) => {

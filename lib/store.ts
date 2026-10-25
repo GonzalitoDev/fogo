@@ -6,7 +6,7 @@ import { BUCKET, RECOVERY_LINK, SUPABASE_KEY, SUPABASE_URL, supabase } from "./s
 import { forgetAccount, forgetSession, rememberProfile, rememberSession } from "./accounts";
 import { friendlyError, upsertMessage } from "./chat";
 import { EVERYONE_DEFAULT, PERMS } from "./types";
-import type { Ban, Boost, VoiceMod, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
+import type { AuditEntry, Ban, Boost, CustomEmoji, Poll, PollVote, Timeout, VoiceMod, ChanPerm, Override, Presence, Relation, SettingsView, Status, VoiceState } from "./types";
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 import type { ServerStructure } from "./discord";
 import type { SupportDraft } from "./ai";
@@ -32,6 +32,9 @@ export type State = {
   profiles: Record<string, Profile>;
   messages: Record<string, ChannelMessages>;
   reactions: Record<string, Reaction[]>; // messageId -> reacciones
+  emojis: Record<string, CustomEmoji>; // emojis propios de los servidores (por id)
+  polls: Record<string, Poll>; // messageId -> encuesta
+  pollVotes: Record<string, PollVote[]>; // messageId -> votos
   replyCache: Record<string, Message | null>; // mensajes citados que no están cargados
   unread: Record<string, Unread>;
   place: Place;
@@ -39,6 +42,7 @@ export type State = {
   toast: { id: number; text: string; tone: "info" | "error" } | null;
   badges: Record<string, string[]>; // userId -> insignias dadas a mano
   boosts: Boost[]; // boosts de servidor (cuentas Premium)
+  timeouts: Record<string, Record<string, Timeout>>; // serverId -> userId -> aislado hasta
   voiceMods: Record<string, Record<string, { muted: boolean; deafened: boolean }>>; // serverId -> userId -> silenciado/ensordecido por el servidor
   isAdmin: boolean;
   staffIds: string[]; // Equipo de Fogón (admins de la plataforma)
@@ -90,6 +94,9 @@ const initial: State = {
   profiles: {},
   messages: {},
   reactions: {},
+  emojis: {},
+  polls: {},
+  pollVotes: {},
   replyCache: {},
   unread: {},
   place: { kind: "dm", channelId: null },
@@ -98,6 +105,7 @@ const initial: State = {
   badges: {},
   boosts: [],
   voiceMods: {},
+  timeouts: {},
   isAdmin: false,
   staffIds: [],
   presence: {},
@@ -285,6 +293,8 @@ async function onSession(session: Session | null) {
   void loadBadges();
   void loadBoosts();
   void loadVoiceMods();
+  void loadTimeouts();
+  void loadEmojis();
   void loadFriends();
   try {
     setState({ sounds: localStorage.getItem("fogon:sounds") !== "0", micMuted: localStorage.getItem("fogon:mic") === "0" });
@@ -552,15 +562,23 @@ async function ensureProfiles(ids: string[]) {
 /* ---------- mensajes ---------- */
 
 const PAGE = 50;
-type Row = Message & { fogon_reactions?: Reaction[] };
+type Row = Message & { fogon_reactions?: Reaction[]; fogon_message_polls?: Poll | Poll[] | null; fogon_poll_votes?: PollVote[] };
+const MSG_SELECT = "*, fogon_reactions(message_id,user_id,emoji), fogon_message_polls(*), fogon_poll_votes(user_id,option_id)";
 
 function ingest(rows: Row[]) {
   const reactions: Record<string, Reaction[]> = {};
-  const msgs = rows.map(({ fogon_reactions, ...m }) => {
+  const polls: Record<string, Poll> = {};
+  const votes: Record<string, PollVote[]> = {};
+  const msgs = rows.map(({ fogon_reactions, fogon_message_polls, fogon_poll_votes, ...m }) => {
     reactions[m.id] = fogon_reactions ?? [];
+    const poll = Array.isArray(fogon_message_polls) ? fogon_message_polls[0] : fogon_message_polls;
+    if (poll) {
+      polls[m.id] = poll;
+      votes[m.id] = fogon_poll_votes ?? [];
+    }
     return { ...m, attachments: m.attachments ?? [], mentions: m.mentions ?? [] } as Message;
   });
-  setState((s) => ({ reactions: { ...s.reactions, ...reactions } }));
+  setState((s) => ({ reactions: { ...s.reactions, ...reactions }, polls: { ...s.polls, ...polls }, pollVotes: { ...s.pollVotes, ...votes } }));
   void ensureProfiles(msgs.map((m) => m.author_id));
   void loadReplies(msgs);
   return msgs;
@@ -597,7 +615,7 @@ export async function openChannel(id: string) {
   setChannelMessages(id, { loading: true });
   const { data, error } = await supabase
     .from("fogon_messages")
-    .select("*, fogon_reactions(message_id,user_id,emoji)")
+    .select(MSG_SELECT)
     .eq("channel_id", id)
     .order("created_at", { ascending: false })
     .limit(PAGE);
@@ -622,7 +640,7 @@ export async function loadOlder(id: string) {
   setChannelMessages(id, { loading: true });
   const { data, error } = await supabase
     .from("fogon_messages")
-    .select("*, fogon_reactions(message_id,user_id,emoji)")
+    .select(MSG_SELECT)
     .eq("channel_id", id)
     .lt("created_at", oldest.created_at)
     .order("created_at", { ascending: false })
@@ -712,7 +730,7 @@ export async function markAllRead(serverId: string | null) {
   setState((s) => {
     const unread = { ...s.unread };
     for (const c of Object.values(s.channels)) {
-      if (serverId ? c.kind === "text" && c.server_id === serverId : c.kind === "dm") unread[c.id] = { unread: false, mentions: 0 };
+      if (serverId ? (c.kind === "text" || c.kind === "thread") && c.server_id === serverId : c.kind === "dm") unread[c.id] = { unread: false, mentions: 0 };
     }
     return { unread };
   });
@@ -996,6 +1014,7 @@ export async function joinServer(code: string) {
   const { data, error } = await supabase.rpc("fogon_join_server", { p_code: code });
   if (error) throw error;
   await loadAll();
+  void loadEmojis();
   go({ kind: "server", serverId: data as string, channelId: null });
 }
 
@@ -1184,7 +1203,10 @@ export function permsOf(s: State, serverId: string, userId: string): Set<Perm> {
   if (!srv) return new Set();
   if (srv.owner_id === userId) return new Set(ALL_PERMS);
   const set = new Set<Perm>([...(srv.everyone_perms ?? EVERYONE_DEFAULT), ...rolesOf(s, serverId, userId).flatMap((r) => r.perms)]);
-  return set.has("administrator") ? new Set(ALL_PERMS) : set;
+  if (set.has("administrator")) return new Set(ALL_PERMS);
+  // aislado: solo puede leer
+  if (timeoutOf(s, serverId, userId)) return new Set<Perm>(["view_channel"]);
+  return set;
 }
 
 export function myPerms(s: State, serverId: string): Set<Perm> {
@@ -1290,6 +1312,7 @@ function onMessageInsert(m: Message) {
   const cm = state.messages[m.channel_id];
   if (cm) setChannelMessages(m.channel_id, { list: upsertMessage(cm.list, m) });
   setState((s) => ({ reactions: { ...s.reactions, [m.id]: s.reactions[m.id] ?? [] } }));
+  if (m.content.startsWith("📊 ")) void loadPoll(m.id);
   void ensureProfiles([m.author_id]);
   if (m.reply_to_id) void loadReplies([m]);
   if (m.author_id === me) return;
@@ -1367,7 +1390,7 @@ function notify(m: Message) {
     if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible" || state.me?.status === "dnd") return;
     const who = state.profiles[m.author_id]?.display_name ?? "Alguien";
     closeNotification(m.channel_id);
-    const n = new Notification(who, { body: m.content.slice(0, 140) || "Mandó una imagen", tag: `fogon:${m.channel_id}` });
+    const n = new Notification(who, { body: m.content.replace(/<a?:([A-Za-z0-9_]+):[0-9a-f-]{36}>/g, ":$1:").slice(0, 140) || "Mandó una imagen", tag: `fogon:${m.channel_id}` });
     notifs.set(m.channel_id, n);
     // tocás la notificación y te lleva al DM (o al canal)
     n.onclick = () => {
@@ -1425,7 +1448,7 @@ function startRealtime() {
           delete channels[id];
           return { channels };
         });
-        if (state.place.channelId === id && ch.server_id) go({ kind: "server", serverId: ch.server_id, channelId: null });
+        if (state.place.channelId === id && ch.server_id) go({ kind: "server", serverId: ch.server_id, channelId: ch.kind === "thread" ? ch.parent_id : null });
         return;
       }
       const c = p.new as Channel;
@@ -1442,6 +1465,24 @@ function startRealtime() {
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_badges" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_boosts" }, () => boostsSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_voice_mods" }, () => void loadVoiceMods())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_timeouts" }, () => void loadTimeouts())
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_emojis" }, (p) => {
+      if (p.eventType === "DELETE") {
+        const id = (p.old as { id?: string }).id;
+        if (id) setState((s) => ({ emojis: Object.fromEntries(Object.entries(s.emojis).filter(([k]) => k !== id)) }));
+      } else {
+        const e = p.new as CustomEmoji;
+        setState((s) => ({ emojis: { ...s.emojis, [e.id]: e } }));
+      }
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_poll_votes" }, (p) => {
+      const r = (p.new && "message_id" in p.new ? p.new : p.old) as { message_id?: string };
+      if (r?.message_id) pollVotesSoon(r.message_id);
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "fogon_message_polls" }, (p) => {
+      const r = p.new as Poll;
+      if (r?.message_id) setState((s) => ({ polls: { ...s.polls, [r.message_id]: r } }));
+    })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_admins" }, () => badgesSoon())
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_account_bans" }, (p) => {
       const r = (p.new ?? {}) as { user_id?: string; reason?: string };
@@ -1502,7 +1543,7 @@ export function serverUnread(s: State, serverId: string): Unread {
   let unread = false;
   let mentions = 0;
   for (const c of Object.values(s.channels)) {
-    if (c.server_id !== serverId || c.kind !== "text") continue;
+    if (c.server_id !== serverId || (c.kind !== "text" && c.kind !== "thread")) continue;
     const u = s.unread[c.id];
     if (u?.unread) unread = true;
     mentions += u?.mentions ?? 0;
@@ -1816,8 +1857,16 @@ function groupOverrides(rows: Override[]) {
 export function channelAllowsFor(s: State, userId: string, channelId: string, perm: ChanPerm): boolean {
   const c = s.channels[channelId];
   if (!c || c.kind === "dm" || !c.server_id) return true;
+  // un hilo hace lo mismo que su canal; archivado, es de solo lectura
+  if (c.kind === "thread") {
+    if (!c.parent_id) return false;
+    if (c.archived && perm !== "view_channel") return false;
+    return channelAllowsFor(s, userId, c.parent_id, perm);
+  }
   const base = permsOf(s, c.server_id, userId);
   if (s.servers[c.server_id]?.owner_id === userId || base.has("administrator")) return true;
+  // aislado: ningún permiso de canal le devuelve lo que no sea leer
+  if (perm !== "view_channel" && timeoutOf(s, c.server_id, userId)) return false;
   const mine = new Set(s.memberRoles[c.server_id]?.[userId] ?? []);
   let ok = base.has(perm);
   for (const lvl of [c.parent_id, c.id]) {
@@ -1836,6 +1885,213 @@ export function channelAllowsFor(s: State, userId: string, channelId: string, pe
 
 export function channelAllows(s: State, channelId: string, perm: ChanPerm): boolean {
   return channelAllowsFor(s, s.me?.id ?? "", channelId, perm);
+}
+
+/* ---------- hilos ---------- */
+
+/** Abre un hilo desde un mensaje (o suelto en un canal) y te lleva ahí. */
+export async function createThread(opts: { channelId?: string; messageId?: string; name?: string }) {
+  const { data, error } = await supabase.rpc("fogon_create_thread", { p_channel: opts.channelId ?? null, p_message: opts.messageId ?? null, p_name: opts.name ?? null });
+  if (error) throw error;
+  const id = data as string;
+  if (!state.channels[id]) {
+    const { data: c } = await supabase.from("fogon_channels").select("*").eq("id", id).maybeSingle();
+    if (c) setState((s) => ({ channels: { ...s.channels, [id]: c as Channel } }));
+  }
+  const c = state.channels[id];
+  if (c?.server_id) go({ kind: "server", serverId: c.server_id, channelId: id });
+  return id;
+}
+
+export async function updateThread(id: string, patch: { name?: string; archived?: boolean }) {
+  const { error } = await supabase.rpc("fogon_thread_update", { p_thread: id, p_name: patch.name ?? null, p_archived: patch.archived ?? null });
+  if (error) throw error;
+  setState((s) => (s.channels[id] ? { channels: { ...s.channels, [id]: { ...s.channels[id], ...patch } } } : {}));
+}
+
+export async function deleteThread(id: string) {
+  const { error } = await supabase.rpc("fogon_thread_delete", { p_thread: id });
+  if (error) throw error;
+}
+
+export function threadsOf(s: State, channelId: string): Channel[] {
+  return Object.values(s.channels)
+    .filter((c) => c.kind === "thread" && c.parent_id === channelId)
+    .sort((a, b) => (b.last_message_at ?? b.created_at).localeCompare(a.last_message_at ?? a.created_at));
+}
+
+/** Cuántos mensajes tiene un hilo (para el cartelito bajo el mensaje). */
+export async function threadCount(id: string): Promise<number> {
+  const { count } = await supabase.from("fogon_messages").select("id", { count: "exact", head: true }).eq("channel_id", id);
+  return count ?? 0;
+}
+
+/* ---------- emojis propios ---------- */
+
+export const EMOJI_TOKEN = /<(a?):([A-Za-z0-9_]{2,32}):([0-9a-f-]{36})>/;
+export const emojiToken = (e: CustomEmoji) => `<${e.animated ? "a" : ""}:${e.name}:${e.id}>`;
+
+/** Emojis de todos mis servidores. */
+export async function loadEmojis() {
+  const ids = Object.keys(state.servers);
+  if (!ids.length) return;
+  const { data, error } = await supabase.from("fogon_emojis").select("*").in("server_id", ids).order("created_at");
+  if (error) return console.warn(error);
+  setState((s) => ({ emojis: { ...s.emojis, ...Object.fromEntries(((data ?? []) as CustomEmoji[]).map((e) => [e.id, e])) } }));
+}
+
+const askedEmojis = new Set<string>();
+/** Emojis que aparecen en mensajes pero son de servidores donde no estoy. */
+export function wantEmoji(id: string) {
+  if (state.emojis[id] || askedEmojis.has(id)) return;
+  askedEmojis.add(id);
+  queueMicrotask(async () => {
+    const ids = [...askedEmojis].filter((x) => !state.emojis[x]);
+    if (!ids.length) return;
+    const { data } = await supabase.from("fogon_emojis").select("*").in("id", ids);
+    if (data?.length) setState((s) => ({ emojis: { ...s.emojis, ...Object.fromEntries((data as CustomEmoji[]).map((e) => [e.id, e])) } }));
+  });
+}
+
+export function serverEmojis(s: State, serverId: string): CustomEmoji[] {
+  return Object.values(s.emojis)
+    .filter((e) => e.server_id === serverId)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+/** Los emojis que puedo usar acá: los del servidor; con Premium, los de todos mis servidores (como Nitro). */
+export function usableEmojis(s: State, serverId: string | null): { server: Server; list: CustomEmoji[] }[] {
+  const premium = !!s.me?.premium;
+  const ids = Object.keys(s.servers).filter((id) => id === serverId || premium);
+  ids.sort((a, b) => Number(b === serverId) - Number(a === serverId));
+  return ids.map((id) => ({ server: s.servers[id], list: serverEmojis(s, id) })).filter((g) => g.list.length);
+}
+
+export async function uploadEmoji(serverId: string, file: File, name: string) {
+  if (!file.type.startsWith("image/")) throw new Error("Tiene que ser una imagen.");
+  if (file.size > 512 * 1024 && file.type === "image/gif") throw new Error("El GIF pesa más de 512 KB.");
+  const blob = file.type === "image/gif" ? file : await shrink(file, 128, 128);
+  const ext = blob.type === "image/gif" ? "gif" : "webp";
+  const path = `${meId()}/emoji-${Date.now()}.${ext}`;
+  const up = await supabase.storage.from(MEDIA_BUCKET).upload(path, blob, { contentType: blob.type, cacheControl: "31536000" });
+  if (up.error) throw up.error;
+  const { data, error } = await supabase
+    .from("fogon_emojis")
+    .insert({ server_id: serverId, name, path, animated: ext === "gif", created_by: meId() })
+    .select("*")
+    .single();
+  if (error) {
+    void supabase.storage.from(MEDIA_BUCKET).remove([path]);
+    if (/fogon_emojis_name|duplicate/.test(error.message)) throw new Error(`Ya hay un emoji que se llama :${name}:.`);
+    throw error;
+  }
+  setState((s) => ({ emojis: { ...s.emojis, [data.id]: data as CustomEmoji } }));
+}
+
+export async function renameEmoji(id: string, name: string) {
+  const { data, error } = await supabase.from("fogon_emojis").update({ name }).eq("id", id).select("*").single();
+  if (error) {
+    if (/fogon_emojis_name|duplicate/.test(error.message)) throw new Error(`Ya hay un emoji que se llama :${name}:.`);
+    throw error;
+  }
+  setState((s) => ({ emojis: { ...s.emojis, [id]: data as CustomEmoji } }));
+}
+
+export async function deleteEmoji(id: string) {
+  const e = state.emojis[id];
+  const { error } = await supabase.from("fogon_emojis").delete().eq("id", id);
+  if (error) throw error;
+  if (e && e.created_by === state.me?.id) void supabase.storage.from(MEDIA_BUCKET).remove([e.path]);
+  setState((s) => ({ emojis: Object.fromEntries(Object.entries(s.emojis).filter(([k]) => k !== id)) }));
+}
+
+/* ---------- encuestas ---------- */
+
+export async function loadPoll(messageId: string) {
+  const [p, v] = await Promise.all([
+    supabase.from("fogon_message_polls").select("*").eq("message_id", messageId).maybeSingle(),
+    supabase.from("fogon_poll_votes").select("user_id,option_id").eq("message_id", messageId),
+  ]);
+  if (!p.data) return;
+  setState((s) => ({ polls: { ...s.polls, [messageId]: p.data as Poll }, pollVotes: { ...s.pollVotes, [messageId]: (v.data ?? []) as PollVote[] } }));
+}
+
+const voteTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+function pollVotesSoon(messageId: string) {
+  if (!(messageId in state.polls)) return;
+  clearTimeout(voteTimers[messageId]);
+  voteTimers[messageId] = setTimeout(async () => {
+    const { data } = await supabase.from("fogon_poll_votes").select("user_id,option_id").eq("message_id", messageId);
+    setState((s) => ({ pollVotes: { ...s.pollVotes, [messageId]: (data ?? []) as PollVote[] } }));
+  }, 250);
+}
+
+export async function createPoll(channelId: string, question: string, options: { text: string; emoji?: string }[], multi: boolean, hours: number) {
+  const { data, error } = await supabase.rpc("fogon_create_poll", { p_channel: channelId, p_question: question, p_options: options, p_multi: multi, p_hours: hours });
+  if (error) throw error;
+  await loadPoll(data as string);
+}
+
+export async function votePoll(messageId: string, optionIds: number[]) {
+  const me = state.me?.id;
+  if (!me) return;
+  const before = state.pollVotes[messageId] ?? [];
+  setState((s) => ({ pollVotes: { ...s.pollVotes, [messageId]: [...before.filter((v) => v.user_id !== me), ...optionIds.map((o) => ({ user_id: me, option_id: o }))] } }));
+  const { error } = await supabase.rpc("fogon_poll_vote", { p_message: messageId, p_options: optionIds });
+  if (error) {
+    setState((s) => ({ pollVotes: { ...s.pollVotes, [messageId]: before } }));
+    throw error;
+  }
+}
+
+export async function endPoll(messageId: string) {
+  const { error } = await supabase.rpc("fogon_poll_end", { p_message: messageId });
+  if (error) throw error;
+  await loadPoll(messageId);
+}
+
+/* ---------- aislar (timeout) ---------- */
+
+export async function loadTimeouts() {
+  const { data, error } = await supabase.from("fogon_timeouts").select("*").gt("until", new Date().toISOString());
+  if (error) return console.warn(error);
+  const map: State["timeouts"] = {};
+  for (const r of (data ?? []) as Timeout[]) (map[r.server_id] ??= {})[r.user_id] = r;
+  setState({ timeouts: map });
+  // cuando se vence el aislamiento más cercano, se vuelve a calcular todo
+  const next = Math.min(...((data ?? []) as Timeout[]).map((t) => new Date(t.until).getTime()));
+  if (Number.isFinite(next)) {
+    clearTimeout(timeoutTimer);
+    timeoutTimer = setTimeout(() => void loadTimeouts(), Math.max(1000, Math.min(next - Date.now() + 500, 2 ** 31 - 1)));
+  }
+}
+let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Si alguien está aislado en un servidor (y no se le venció), hasta cuándo. */
+export function timeoutOf(s: State, serverId: string | null | undefined, userId: string): Timeout | null {
+  const t = serverId ? s.timeouts[serverId]?.[userId] : undefined;
+  return t && new Date(t.until).getTime() > Date.now() ? t : null;
+}
+
+/** Aislar por unos minutos (0 = quitar el aislamiento). */
+export async function setTimeoutFor(serverId: string, userId: string, minutes: number, reason = "") {
+  const { error } = await supabase.rpc("fogon_timeout", { p_server: serverId, p_user: userId, p_minutes: minutes, p_reason: reason });
+  if (error) throw error;
+  await loadTimeouts();
+}
+
+/* ---------- registro de auditoría ---------- */
+
+export async function loadAudit(serverId: string, opts: { action?: string; actor?: string; before?: number } = {}): Promise<AuditEntry[]> {
+  let q = supabase.from("fogon_audit").select("*").eq("server_id", serverId).order("id", { ascending: false }).limit(50);
+  if (opts.action) q = q.like("action", opts.action + "%");
+  if (opts.actor) q = q.eq("actor_id", opts.actor);
+  if (opts.before) q = q.lt("id", opts.before);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []) as AuditEntry[];
+  void ensureProfiles([...new Set(rows.map((r) => r.actor_id).filter(Boolean) as string[])]);
+  return rows;
 }
 
 /* ---------- silenciar / ensordecer en el servidor ---------- */

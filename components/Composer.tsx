@@ -1,8 +1,9 @@
 "use client";
 
+import { PollDialog } from "./Poll";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { activeTrigger, filterProfiles, IMAGE_TYPES, MAX_FILE, MAX_LEN } from "@/lib/chat";
-import { sendMessage, toast } from "@/lib/store";
+import { EMOJI_TOKEN, emojiToken, sendMessage, toast, usableEmojis, useStore } from "@/lib/store";
 import type { Channel, Message, Profile } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Avatar, EmojiPicker } from "./ui";
@@ -26,6 +27,8 @@ type Props = {
   onEditLast: () => void;
   onTyping?: (stop?: boolean) => void;
   noAttach?: boolean;
+  /** muestra el botón para crear encuestas */
+  canPoll?: boolean;
   disabled?: string;
 };
 
@@ -37,6 +40,18 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
   const [dismissed, setDismissed] = useState<number | null>(null);
   const [emoji, setEmoji] = useState<{ x: number; y: number } | null>(null);
   const [face, setFace] = useState(0);
+  const [poll, setPoll] = useState(false);
+  const servers = useStore((s) => s.servers);
+  const emojis = useStore((s) => s.emojis);
+  const meP = useStore((s) => s.me);
+  const chServer = useStore((s) => s.channels[p.channelId]?.server_id ?? null);
+  // :nombre: -> emoji propio (los del servidor primero; con Premium, los de todos)
+  const byName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of usableEmojis({ servers, emojis, me: meP } as Parameters<typeof usableEmojis>[0], chServer))
+      for (const e of g.list) if (!map.has(e.name.toLowerCase())) map.set(e.name.toLowerCase(), emojiToken(e));
+    return map;
+  }, [servers, emojis, meP, chServer]);
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -119,7 +134,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
   };
 
   const send = () => {
-    const content = text.trim();
+    // fuera de bloques de código, :nombre: pasa a ser el emoji propio
+    const content = text
+      .trim()
+      .split(/(```[\s\S]*?```|`[^`\n]+`)/)
+      .map((part, i) => (i % 2 ? part : part.replace(/(?<![<\w]):(\w{2,32}):/g, (all, n: string) => byName.get(n.toLowerCase()) ?? all)))
+      .join("");
     if (!content && !files.length) return;
     if (content.length > MAX_LEN) return toast(`El mensaje tiene ${content.length} caracteres; el máximo es ${MAX_LEN}.`, "error");
     void sendMessage(p.channelId, content, files.map((f) => f.file), p.replyTo?.id ?? null);
@@ -131,7 +151,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
   };
 
   const count = text.trim().length;
-  const insertEmoji = (e: string) => {
+  const insertEmoji = (raw: string) => {
+    const tok = EMOJI_TOKEN.exec(raw);
+    const e = tok ? `:${tok[2]}:` : raw;
     const el = ta.current;
     const at = el ? el.selectionStart : text.length;
     const next = text.slice(0, at) + e + text.slice(at);
@@ -258,6 +280,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
               }
             }}
           />
+          {p.canPoll && (
+            <button className="icon-btn poll-btn" onClick={() => setPoll(true)} aria-label="Crear encuesta" title="Crear encuesta">
+              <Icon name="poll" />
+            </button>
+          )}
           <button
             className="icon-btn emoji-btn"
             onMouseEnter={() => setFace((f) => (f + 1) % EMOJI_FACES.length)}
@@ -276,6 +303,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
         </div>
       </div>
       {emoji && <EmojiPicker at={emoji} onPick={insertEmoji} onClose={() => setEmoji(null)} />}
+      {poll && <PollDialog channelId={p.channelId} onClose={() => setPoll(false)} />}
       {count > MAX_LEN - 200 && (
         <span className={`count${count > MAX_LEN ? " over" : ""}`}>
           {count}/{MAX_LEN}
