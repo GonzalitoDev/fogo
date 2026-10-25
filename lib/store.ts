@@ -68,6 +68,7 @@ export type State = {
   voicePing: number | null; // ms de ida y vuelta promedio en la llamada
   voiceRelay: boolean; // la llamada pasa por TURN: nadie ve la IP de los demás
   botVoice: Record<string, VoiceState>; // bots conectados a canales de voz (no tienen micrófono)
+  voiceModTest: boolean; // staff probando la moderación de voz de gonza.bot
   botsListen: boolean; // "los bots me escuchan": paso mi voz a texto para que contesten
   voiceCaption: { botId: string; text: string; id: number } | null; // lo que está diciendo un bot
   music: Record<string, MusicState>; // canal de voz -> qué suena (bot de música)
@@ -130,6 +131,7 @@ const initial: State = {
   voicePing: null,
   voiceRelay: false,
   botVoice: {},
+  voiceModTest: false,
   botsListen: false,
   voiceCaption: null,
   music: {},

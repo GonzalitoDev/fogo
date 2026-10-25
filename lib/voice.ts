@@ -698,7 +698,10 @@ if (typeof window !== "undefined") {
       tellHere(ch);
       if (ch) hereTimer = setInterval(() => tellHere(hereCh), 45_000);
     }
-    if (!s.voice) kicked = false;
+    if (!s.voice) {
+      kicked = false;
+      if (s.voiceModTest) setState({ voiceModTest: false });
+    }
     else if (!kicked && s.voice.status === "connected" && !channelAllows(s, s.voice.channelId, "connect")) {
       kicked = true;
       toast("Te aislaron en este servidor: saliste de la llamada.", "error");

@@ -12,13 +12,22 @@ import { getState, permsOf, setState, subscribe, toast } from "./store";
 export const GONZA_BOT = "7c1d1f00-0000-4000-8000-0000000060a1";
 const COMMUNITY = "e56307db-6dfc-5a65-88a3-486d38ec17c2";
 
-/** gonza.bot está en tu sala de la comunidad: lo que decís se pasa a texto para moderar (salvo el staff). */
-export function voiceModerated(s = getState()): boolean {
-  const v = s.voice;
-  if (!v || v.serverId !== COMMUNITY || s.botVoice[GONZA_BOT]?.ch !== v.channelId) return false;
+/** Staff de la comunidad: gonza.bot no lo modera (salvo en modo prueba). */
+export function voiceStaff(s = getState()): boolean {
   const me = s.me?.id ?? "";
   const p = permsOf(s, COMMUNITY, me);
-  return !(s.servers[COMMUNITY]?.owner_id === me || ["administrator", "manage_messages", "manage_server", "kick_members", "ban_members"].some((x) => p.has(x as never)));
+  return s.servers[COMMUNITY]?.owner_id === me || ["administrator", "manage_messages", "manage_server", "kick_members", "ban_members"].some((x) => p.has(x as never));
+}
+
+/** gonza.bot está en tu sala de la comunidad. */
+export function gonzaInMyRoom(s = getState()): boolean {
+  const v = s.voice;
+  return !!v && v.serverId === COMMUNITY && s.botVoice[GONZA_BOT]?.ch === v.channelId;
+}
+
+/** Lo que decís se pasa a texto para moderar (al staff solo en modo prueba). */
+export function voiceModerated(s = getState()): boolean {
+  return gonzaInMyRoom(s) && (!voiceStaff(s) || s.voiceModTest);
 }
 
 type Rec = {
@@ -107,8 +116,10 @@ async function heard(text: string) {
   const ch = getState().voice?.channelId;
   if (!ch) return;
   if (voiceModerated()) {
-    const { data: mod } = await supabase.rpc("fogon_voice_mod_heard", { p_channel: ch, p_text: text });
-    const m = mod as { moderated?: boolean; bot_id?: string; text?: string } | null;
+    const test = voiceStaff();
+    const { data: mod } = await supabase.rpc("fogon_voice_mod_heard", { p_channel: ch, p_text: text, p_test: test });
+    const m = mod as { moderated?: boolean; bot_id?: string; text?: string; step?: number } | null;
+    if (test) toast(m?.moderated ? `Prueba: detectó «${text}» (${["", "aviso", "silenciar 2 min", "aislar 10 min"][m.step ?? 1]}, ${m.step}/3). No se aplicó.` : `Prueba: escuchó «${text}». No hay insultos.`);
     if (m?.moderated && m.bot_id && m.text) return void setTimeout(() => botSay({ bot_id: m.bot_id!, text: m.text! }), 800);
   }
   if (!botsTalk()) return;
