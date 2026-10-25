@@ -5,7 +5,7 @@ import { can, channelAllows, deleteChannel, fail, go, linkTo, setBotsListen, set
 import { friendlyError } from "@/lib/chat";
 import type { Channel, Profile } from "@/lib/types";
 import { joinVoice, leaveVoice, moveMember, screenSupported, setNoiseMode, startScreenShare, stopScreenShare } from "@/lib/voice";
-import { listenSupported } from "@/lib/botListen";
+import { GONZA_BOT, listenSupported, voiceModerated } from "@/lib/botListen";
 import { addTrack, pause, searchMusic, setMusicVolume, skip, stopMusic } from "@/lib/music";
 import type { MusicTrack } from "@/lib/store";
 import { Icon } from "./Icon";
@@ -330,6 +330,8 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
   const sharers = members.filter((m) => m.screen).map((m) => m.p);
   const [focus, setFocus] = useState<string | null>(null);
   const focused = sharers.find((p) => p.id === focus)?.id ?? sharers[0]?.id ?? null;
+  const modHere = useStore((s) => s.botVoice[GONZA_BOT]?.ch === channel.id);
+  const moderated = useStore((s) => here && voiceModerated(s));
   return (
     <section className="chat vc-pane">
       <header className="chat-head">
@@ -378,6 +380,13 @@ export function VoicePane({ channel, onMenu }: { channel: Channel; onMenu: () =>
           </div>
         )}
       </div>
+      {modHere && (
+        <div className="vc-modnote" role="note">
+          🛡️ <b>gonza.bot</b> modera esta sala.
+          {moderated ? " Lo que decís se pasa a texto en tu navegador (en Chrome lo procesa Google) solo para frenar insultos; no se guarda." : " Cuida que no haya insultos."}
+          {here && moderated && !listenSupported() && " Tu navegador no lo permite, así que acá no te escucha."}
+        </div>
+      )}
       <NowPlaying channelId={channel.id} here={here} onOpen={() => setMusicOpen(true)} />
       {musicOpen && here && <MusicPanel channelId={channel.id} onClose={() => setMusicOpen(false)} />}
       <div className="vc-controls">

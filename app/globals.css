@@ -1626,3 +1626,5 @@ button.tag-chip:hover { border-color: var(--accent); }
 .threads-tabs { display: flex; gap: 6px; padding: 10px 12px 4px; }
 .threads-pop .thread-list { padding: 4px 8px 8px; }
 .threads-pop .hint.pad { padding: 8px 16px 16px; }
+.vc-modnote { margin: 0 16px 8px; padding: 8px 12px; border-radius: 8px; background: var(--hover); color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+.vc-modnote b { color: var(--ink); }

@@ -681,3 +681,28 @@ export async function startMicTest(mode: NoiseMode, hear: boolean): Promise<MicT
     },
   };
 }
+
+/* aviso a la base en qué canal de voz estoy (para que gonza.bot vaya a moderar donde hay gente),
+   y si me aíslan o me sacan el permiso de conectarme, salgo de la llamada */
+if (typeof window !== "undefined") {
+  let hereCh: string | null = null;
+  let hereTimer: ReturnType<typeof setInterval> | undefined;
+  let kicked = false;
+  const tellHere = (ch: string | null) => void supabase.rpc("fogon_voice_here", { p_channel: ch }).then(() => {}, () => {});
+  subscribe(() => {
+    const s = getState();
+    const ch = s.voice?.status === "connected" ? s.voice.channelId : null;
+    if (ch !== hereCh) {
+      hereCh = ch;
+      clearInterval(hereTimer);
+      tellHere(ch);
+      if (ch) hereTimer = setInterval(() => tellHere(hereCh), 45_000);
+    }
+    if (!s.voice) kicked = false;
+    else if (!kicked && s.voice.status === "connected" && !channelAllows(s, s.voice.channelId, "connect")) {
+      kicked = true;
+      toast("Te aislaron en este servidor: saliste de la llamada.", "error");
+      void leaveVoice(true);
+    }
+  });
+}

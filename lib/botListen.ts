@@ -7,7 +7,19 @@
  * Es opcional y apagado por defecto: en Chrome el audio se procesa en los servidores de Google.
  */
 import { supabase } from "./supabase";
-import { getState, setState, subscribe, toast } from "./store";
+import { getState, permsOf, setState, subscribe, toast } from "./store";
+
+export const GONZA_BOT = "7c1d1f00-0000-4000-8000-0000000060a1";
+const COMMUNITY = "e56307db-6dfc-5a65-88a3-486d38ec17c2";
+
+/** gonza.bot está en tu sala de la comunidad: lo que decís se pasa a texto para moderar (salvo el staff). */
+export function voiceModerated(s = getState()): boolean {
+  const v = s.voice;
+  if (!v || v.serverId !== COMMUNITY || s.botVoice[GONZA_BOT]?.ch !== v.channelId) return false;
+  const me = s.me?.id ?? "";
+  const p = permsOf(s, COMMUNITY, me);
+  return !(s.servers[COMMUNITY]?.owner_id === me || ["administrator", "manage_messages", "manage_server", "kick_members", "ban_members"].some((x) => p.has(x as never)));
+}
 
 type Rec = {
   lang: string;
@@ -34,10 +46,15 @@ let talking = false; // mientras habla un bot no escucho (si no, se escucha a s�
 let captionSeq = 0;
 const said = new Map<string, number>();
 
+function botsTalk(s = getState()) {
+  if (!s.botsListen || !s.voice || !s.sounds) return false;
+  return Object.values(s.botVoice).some((v) => v.ch === s.voice!.channelId);
+}
+
 function shouldListen() {
   const s = getState();
-  if (!s.botsListen || !s.voice || s.voice.status !== "connected" || s.micMuted || !s.sounds) return false;
-  return Object.values(s.botVoice).some((v) => v.ch === s.voice!.channelId);
+  if (!s.voice || s.voice.status !== "connected" || s.micMuted) return false;
+  return botsTalk(s) || voiceModerated(s);
 }
 
 function start() {
@@ -89,6 +106,12 @@ function stop() {
 async function heard(text: string) {
   const ch = getState().voice?.channelId;
   if (!ch) return;
+  if (voiceModerated()) {
+    const { data: mod } = await supabase.rpc("fogon_voice_mod_heard", { p_channel: ch, p_text: text });
+    const m = mod as { moderated?: boolean; bot_id?: string; text?: string } | null;
+    if (m?.moderated && m.bot_id && m.text) return void setTimeout(() => botSay({ bot_id: m.bot_id!, text: m.text! }), 800);
+  }
+  if (!botsTalk()) return;
   const { data } = await supabase.rpc("fogon_bot_voice_say", { p_channel: ch, p_text: text });
   const d = data as { bot_id: string; text: string } | null;
   // por si el broadcast no llega, lo digo igual (sin repetir)
