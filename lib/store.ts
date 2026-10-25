@@ -62,6 +62,7 @@ export type State = {
   voicePeers: Record<string, "connecting" | "connected" | "failed">;
   noiseMode: "ia" | "navegador" | "off"; // supresión de ruido del micrófono
   voicePing: number | null; // ms de ida y vuelta promedio en la llamada
+  voiceRelay: boolean; // la llamada pasa por TURN: nadie ve la IP de los demás
   botVoice: Record<string, VoiceState>; // bots conectados a canales de voz (no tienen micrófono)
   botsListen: boolean; // "los bots me escuchan": paso mi voz a texto para que contesten
   voiceCaption: { botId: string; text: string; id: number } | null; // lo que está diciendo un bot
@@ -119,6 +120,7 @@ const initial: State = {
   voicePeers: {},
   noiseMode: "ia",
   voicePing: null,
+  voiceRelay: false,
   botVoice: {},
   botsListen: false,
   voiceCaption: null,

@@ -1534,4 +1534,4 @@ button.tag-chip:hover { border-color: var(--accent); }
 .support-chips { display: flex; gap: 6px; }
 .urgency-alta { background: #f23f43; border-color: #f23f43; color: #fff; }
 .urgency-media { background: #f0b232; border-color: #f0b232; color: #2b1b02; }
-.urgency-baja { background: #23a55a; border-color: #23a55a; color: #fff; }
+.urgency-baja { background: #23a55a; border-color: #23a55a; color: #fff; }.vc-shield { display: inline-flex; margin-left: 4px; color: #23a55a; } .vc-shield svg { width: 13px; height: 13px; }

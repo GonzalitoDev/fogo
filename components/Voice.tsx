@@ -229,6 +229,7 @@ export function VoiceConnected() {
   const server = useStore((s) => (s.voice ? s.servers[s.voice.serverId] : undefined));
   const peers = useStore((s) => s.voicePeers);
   const ping = useStore((s) => s.voicePing);
+  const relay = useStore((s) => s.voiceRelay);
   if (!voice || !ch) return null;
   const vals = Object.values(peers);
   const bad = vals.includes("failed");
@@ -241,6 +242,11 @@ export function VoiceConnected() {
           {!bad && !connecting && ping !== null && (
             <span className={`vc-ping ${ping < 100 ? "good" : ping < 250 ? "mid" : "slow"}`} title="Latencia de ida y vuelta con los demás">
               {ping} ms
+            </span>
+          )}
+          {relay && !connecting && (
+            <span className="vc-shield" title="IP protegida: la llamada pasa por un servidor seguro, nadie ve tu IP">
+              <Icon name="shield" />
             </span>
           )}
         </b>

@@ -25,6 +25,28 @@ function bitrateNow(): number {
 
 const ICE: RTCIceServer[] = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
 
+/*
+ * IP protegida: si hay credenciales de TURN (Cloudflare), todo el audio y la pantalla pasan por ahí
+ * (iceTransportPolicy "relay"). Así nadie de la llamada ve la IP de los demás.
+ * Si no hay (TURN sin configurar o caído), la llamada sigue funcionando en directo.
+ */
+let turn: { servers: RTCIceServer[]; until: number } | null = null;
+let rtcConfig: RTCConfiguration = { iceServers: ICE };
+
+async function loadTurn(): Promise<RTCIceServer[] | null> {
+  if (turn && Date.now() < turn.until) return turn.servers;
+  try {
+    const { data, error } = await supabase.functions.invoke("turn-credentials", { method: "POST" });
+    const servers = (data as { iceServers?: RTCIceServer[] } | null)?.iceServers;
+    if (error || !servers?.length) return null;
+    const ttl = Number((data as { ttl?: number }).ttl) || 3600;
+    turn = { servers, until: Date.now() + Math.max(60, ttl - 600) * 1000 };
+    return servers;
+  } catch {
+    return null;
+  }
+}
+
 type Sig =
   | { from: string; to: string; type: "offer" | "answer"; sdp: string }
   | { from: string; to: string; type: "ice"; candidate: RTCIceCandidateInit };
@@ -257,7 +279,7 @@ function applyLocalMute() {
 function peerFor(uid: string): Peer {
   let p = peers.get(uid);
   if (p) return p;
-  const pc = new RTCPeerConnection({ iceServers: ICE });
+  const pc = new RTCPeerConnection(rtcConfig);
   const audio = new Audio();
   audio.autoplay = true;
   audio.muted = !getState().sounds;
@@ -414,6 +436,10 @@ export async function joinVoice(channelId: string) {
   const proc = await processMic(raw, getState().noiseMode);
   if (seq !== joinSeq) return proc.off();
   local = proc.stream;
+  const relay = await loadTurn();
+  if (seq !== joinSeq) return;
+  rtcConfig = relay ? { iceServers: relay, iceTransportPolicy: "relay" } : { iceServers: ICE };
+  setState({ voiceRelay: !!relay });
   chainOff = proc.off;
   if (proc.mode !== getState().noiseMode) setState({ noiseMode: proc.mode });
   applyLocalMute();
