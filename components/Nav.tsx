@@ -363,10 +363,15 @@ export function ServerSidebar({ server, dialogs, onNavigate }: { server: Server;
         >
           {level >= 1 && (
             <span className="srv-level" title={`Nivel ${level} de boosts · ${server.boost_count} boosts`}>
-              <BoostGem />
+              {server.is_partner && server.icon_url ? <img className="srv-logo" src={server.icon_url} alt="" /> : <BoostGem />}
             </span>
           )}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{server.name}</span>
+          {server.is_partner && (
+            <span className="partner-pill" title="Partner oficial de Fogón" aria-label="Partner oficial de Fogón">
+              <Icon name="check" />
+            </span>
+          )}
           <Icon name={menu ? "close" : "chevron"} />
         </button>
         <button className="icon-btn" onClick={dialogs.inbox} aria-label="Bandeja: menciones y mensajes directos" title="Bandeja">

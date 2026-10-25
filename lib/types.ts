@@ -42,6 +42,7 @@ export type Server = {
   invite_vanity?: boolean;
   is_public?: boolean;
   is_official?: boolean;
+  is_partner?: boolean;
   description?: string;
   tags?: string[];
 };

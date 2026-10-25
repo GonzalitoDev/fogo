@@ -961,6 +961,7 @@ export type CommunityCard = {
   members: number;
   boosts: number;
   official: boolean;
+  partner: boolean;
   invite_code: string;
   already_member: boolean;
 };
@@ -969,7 +970,7 @@ export type CommunityCard = {
 export async function discoverCommunities(q = "", tag: string | null = null): Promise<CommunityCard[]> {
   const { data, error } = await supabase.rpc("fogon_discover", { p_q: q, p_tag: tag });
   if (error) throw error;
-  return ((data ?? []) as CommunityCard[]).map((c) => ({ ...c, members: Number(c.members) || 0, tags: c.tags ?? [] }));
+  return ((data ?? []) as CommunityCard[]).map((c) => ({ ...c, members: Number(c.members) || 0, tags: c.tags ?? [], partner: !!c.partner }));
 }
 
 /** Publica o saca el servidor del directorio público. */

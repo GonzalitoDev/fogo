@@ -106,6 +106,7 @@ export function DiscoverDialog({ onClose }: { onClose: () => void }) {
                       <Icon name="check" /> Oficial
                     </span>
                   )}
+                  {c.partner && <span className="partner-tag">Partner</span>}
                 </div>
                 {c.description && <p>{c.description}</p>}
                 <div className="community-meta">

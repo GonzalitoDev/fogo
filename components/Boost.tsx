@@ -5,6 +5,7 @@ import { BOOSTS_PER_USER, LEVELS, boostLevel, nextLevel } from "@/lib/boost";
 import { friendlyError } from "@/lib/chat";
 import { boostServer, serverBoosters, toast, unboostServer, useStore } from "@/lib/store";
 import { Avatar, Modal } from "./ui";
+import { Icon } from "./Icon";
 import { Name } from "./Name";
 
 /** Gema de boost (rosa, como la de Discord). */
@@ -56,6 +57,11 @@ export function BoostDialog({ serverId, onClose }: { serverId: string; onClose: 
         <div className="boost-hero">
           <BoostGem className="big" />
           <h2>{server.name}</h2>
+          {server.is_partner && (
+            <span className="partner-tag">
+              <Icon name="check" /> Partner oficial
+            </span>
+          )}
           <p>
             {level ? (
               <>
@@ -94,22 +100,30 @@ export function BoostDialog({ serverId, onClose }: { serverId: string; onClose: 
           ))}
         </div>
 
-        <h3 className="boost-sub">Boosters {Object.keys(boosters).length ? `— ${Object.keys(boosters).length}` : ""}</h3>
-        {Object.keys(boosters).length ? (
+        <h3 className="boost-sub">Boosters {Object.keys(boosters).length ? `· ${Object.keys(boosters).length}` : ""}</h3>
+        {(server.is_partner || Object.keys(boosters).length > 0) && (
           <div className="boost-people">
+            {server.is_partner && (
+              <div className="boost-person official">
+                <span className="boost-official-logo">{server.icon_url ? <img src={server.icon_url} alt="" /> : <BoostGem />}</span>
+                <b>Fogón Oficial</b>
+                <span className="boost-n">
+                  <BoostGem /> ×14
+                </span>
+              </div>
+            )}
             {Object.entries(boosters).map(([uid, n]) => (
               <div key={uid} className="boost-person">
                 <Avatar p={profiles[uid]} size="sm" />
                 {profiles[uid] ? <Name p={profiles[uid]} /> : <span>…</span>}
                 <span className="boost-n">
-                  <BoostGem /> ×{n}
+                  <BoostGem /> ·{n}
                 </span>
               </div>
             ))}
           </div>
-        ) : (
-          <p className="hint">Nadie boosteó este servidor todavía. ¡Sé el primero!</p>
         )}
+        {!server.is_partner && !Object.keys(boosters).length && <p className="hint">Nadie boosteó este servidor todavía. ¡Sé el primero!</p>}
 
         <div className="boost-mine">
           {me.premium ? (
