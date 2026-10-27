@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { friendlyError } from "@/lib/chat";
 import { supabase } from "@/lib/supabase";
-import { can, deleteMyAccount, fail, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
+import { can, deleteMyAccount, endOtherSessions, endSession, fail, mySessions, type MySession, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
 import type { Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
@@ -228,6 +228,10 @@ function Account({ onEdit }: { onEdit: () => void }) {
           Cambiar contraseña
         </button>
       </form>
+      <hr className="settings-hr" />
+      <TwoFactor />
+      <hr className="settings-hr" />
+      <Sessions />
       {me.id !== "e7809edc-8559-4df6-8d2b-1fffc7a27719" && (
         <>
           <hr className="settings-hr" />
@@ -238,6 +242,188 @@ function Account({ onEdit }: { onEdit: () => void }) {
           </button>
           {askDelete && <DeleteAccountDialog onClose={() => setAskDelete(false)} />}
         </>
+      )}
+    </>
+  );
+}
+
+/** Verificación en dos pasos con una app autenticadora (Google Authenticator, Authy, 1Password…). */
+function TwoFactor() {
+  const [factorId, setFactorId] = useState<string | null | undefined>(undefined); // undefined = cargando
+  const [setup, setSetup] = useState<{ id: string; qr: string; secret: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) return fail(error);
+    setFactorId(data.totp.find((f) => f.status === "verified")?.id ?? null);
+  };
+  useEffect(() => void load(), []);
+
+  const start = async () => {
+    setBusy(true);
+    try {
+      // un intento anterior sin terminar deja un factor sin verificar: lo sacamos para empezar de cero
+      const { data: list } = await supabase.auth.mfa.listFactors();
+      for (const f of list?.all ?? []) if (f.status !== "verified") await supabase.auth.mfa.unenroll({ factorId: f.id });
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Fogón" });
+      if (error) throw error;
+      setSetup({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
+      setCode("");
+    } catch (e) {
+      toast(friendlyError(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!setup) return;
+    setBusy(true);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: setup.id, code });
+    setBusy(false);
+    if (error) return toast("El código no es correcto. Probá con el que aparece ahora en la app.", "error");
+    setSetup(null);
+    toast("🔐 Activaste la verificación en dos pasos");
+    void load();
+  };
+
+  const disable = async () => {
+    if (!factorId || !confirm_("¿Desactivar la verificación en dos pasos? Tu cuenta va a quedar protegida solo con la contraseña.")) return;
+    setBusy(true);
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    setBusy(false);
+    if (error) return toast(friendlyError(error), "error");
+    toast("Desactivaste la verificación en dos pasos");
+    void load();
+  };
+
+  return (
+    <>
+      <h2>Verificación en dos pasos</h2>
+      <p className="hint">Además de la contraseña, al entrar te pedimos un código de tu app autenticadora. Si alguien te roba la contraseña, igual no puede entrar.</p>
+      {factorId === undefined ? null : factorId ? (
+        <div className="mfa-on">
+          <span className="mfa-badge">✅ Activada</span>
+          <button className="btn danger" disabled={busy} onClick={() => void disable()}>
+            Desactivar
+          </button>
+        </div>
+      ) : setup ? (
+        <form className="pass-form" onSubmit={confirm}>
+          <ol className="mfa-steps">
+            <li>Escaneá este código con tu app autenticadora (Google Authenticator, Authy, 1Password…).</li>
+            <li>Poné el código de 6 dígitos que te muestra.</li>
+          </ol>
+          <img className="mfa-qr" src={setup.qr} alt="Código QR para la app autenticadora" width={180} height={180} />
+          <p className="hint">
+            ¿No podés escanear? Cargá esta clave a mano: <code className="mfa-secret">{setup.secret}</code>
+          </p>
+          <label className="field">
+            <span>Código</span>
+            <input className="input mfa-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn primary" disabled={busy || code.length !== 6}>
+              Activar
+            </button>
+            <button type="button" className="btn ghost" onClick={() => setSetup(null)}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button className="btn primary" disabled={busy} onClick={() => void start()}>
+          Activar verificación en dos pasos
+        </button>
+      )}
+    </>
+  );
+}
+
+function confirm_(text: string) {
+  return typeof window !== "undefined" && window.confirm(text);
+}
+
+/** "Navegador en sistema" a partir del user agent, lo justo para reconocer el dispositivo. */
+function deviceName(ua: string | null) {
+  if (!ua) return "Dispositivo desconocido";
+  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\/|Opera/.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Navegador";
+  const os = /Android/.test(ua) ? "Android" : /iPhone|iPad|iPod/.test(ua) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
+  return os ? `${browser} en ${os}` : browser;
+}
+
+function Sessions() {
+  const [list, setList] = useState<MySession[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () =>
+    mySessions()
+      .then(setList)
+      .catch((e) => toast(friendlyError(e), "error"));
+  useEffect(() => void load(), []);
+  const others = (list ?? []).filter((x) => !x.current);
+  const when = (d: string) => new Date(d).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
+  return (
+    <>
+      <h2>Dispositivos</h2>
+      <p className="hint">Estos son los lugares donde tu cuenta tiene la sesión abierta. Si ves uno que no reconocés, cerralo y cambiá tu contraseña.</p>
+      <ul className="sess-list">
+        {(list ?? []).map((x) => (
+          <li key={x.id} className="sess">
+            <div>
+              <b>
+                {deviceName(x.user_agent)}
+                {x.current && <span className="sess-here"> · Este dispositivo</span>}
+              </b>
+              <small>
+                {x.ip ? `${x.ip} · ` : ""}Última actividad: {when(x.last_seen)}
+                {x.aal === "aal2" ? " · 🔐 con dos pasos" : ""}
+              </small>
+            </div>
+            {!x.current && (
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await endSession(x.id);
+                    toast("Cerraste esa sesión");
+                    await load();
+                  } catch (e) {
+                    toast(friendlyError(e), "error");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Cerrar
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {others.length > 0 && (
+        <button
+          className="btn danger"
+          disabled={busy}
+          onClick={async () => {
+            if (!confirm_(`¿Cerrar la sesión en los otros ${others.length} dispositivos?`)) return;
+            setBusy(true);
+            try {
+              await endOtherSessions();
+              toast("Cerraste la sesión en todos los demás dispositivos");
+              await load();
+            } catch (e) {
+              toast(friendlyError(e), "error");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Cerrar sesión en todos los demás
+        </button>
       )}
     </>
   );

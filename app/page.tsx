@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { configured } from "@/lib/supabase";
 import { boot, can, claimReferral, getState, setState, useStore } from "@/lib/store";
 import type { Channel, Server } from "@/lib/types";
-import { AuthScreen, NewPasswordScreen, ProfileSetup } from "@/components/Auth";
+import { AuthScreen, MfaScreen, NewPasswordScreen, ProfileSetup } from "@/components/Auth";
 import { ChatPane } from "@/components/Chat";
 import {
   ChannelDialog,
@@ -107,6 +107,7 @@ export default function Page() {
   const needsProfile = useStore((s) => s.needsProfile);
   const suspended = useStore((s) => s.suspended);
   const recovery = useStore((s) => s.recovery);
+  const mfa = useStore((s) => s.mfa);
   const me = useStore((s) => s.me);
   const place = useStore((s) => s.place);
   const servers = useStore((s) => s.servers);
@@ -213,6 +214,13 @@ export default function Page() {
     return (
       <>
         <AuthScreen />
+        {toastEl}
+      </>
+    );
+  if (mfa)
+    return (
+      <>
+        <MfaScreen />
         {toastEl}
       </>
     );

@@ -20,6 +20,7 @@ export type State = {
   session: Session | null;
   me: Profile | null;
   needsProfile: boolean;
+  mfa: boolean; // tiene verificación en dos pasos y falta poner el código
   recovery: boolean; // entró con el link de "olvidé mi contraseña": tiene que elegir una nueva
   suspended: { reason: string } | null; // mi cuenta está baneada de Fogón
   accountBans: Record<string, { reason: string; created_at: string }>; // admins: cuentas baneadas
@@ -84,6 +85,7 @@ const initial: State = {
   me: null,
   needsProfile: false,
   suspended: null,
+  mfa: false,
   recovery: false,
   accountBans: {},
   servers: {},
@@ -272,6 +274,9 @@ async function onSession(session: Session | null) {
   // el aviso de cuenta suspendida queda hasta que alguien inicie sesión de nuevo
   setState({ ...initial, suspended: session ? null : state.suspended, session, ready: false, online: typeof navigator === "undefined" ? true : navigator.onLine });
   if (!session) return setState({ ready: true });
+  // con dos pasos activados, la base no muestra nada hasta que se ponga el código
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2") return setState({ ready: true, mfa: true });
   const { data: me, error } = await supabase.from("fogon_profiles").select(`${PCOLS}`).eq("id", session.user.id).maybeSingle();
   if (error) {
     fail(error);
@@ -468,6 +473,42 @@ export async function signOut() {
   // la cuenta queda guardada en este dispositivo, pero sin sesión
   if (state.me) forgetSession(state.me.id);
   await supabase.auth.signOut();
+}
+
+/* ---------- verificación en dos pasos y sesiones ---------- */
+
+/** Segundo paso al entrar: código de 6 dígitos de la app autenticadora. */
+export async function verifyMfa(code: string) {
+  const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: await totpFactorId(), code: code.replace(/\s/g, "") });
+  if (error) throw new Error("El código no es correcto o ya venció. Probá con el que aparece ahora.");
+  // es el mismo usuario, así que onAuthStateChange no recarga: cargamos todo ahora que la base deja ver
+  await onSession((await supabase.auth.getSession()).data.session);
+}
+
+async function totpFactorId() {
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) throw error;
+  const f = data.totp.find((x) => x.status === "verified");
+  if (!f) throw new Error("No tenés la verificación en dos pasos activada.");
+  return f.id;
+}
+
+export type MySession = { id: string; created_at: string; last_seen: string; user_agent: string | null; ip: string | null; aal: string; current: boolean };
+
+export async function mySessions(): Promise<MySession[]> {
+  const { data, error } = await supabase.rpc("fogon_my_sessions");
+  if (error) throw error;
+  return (data ?? []) as MySession[];
+}
+
+export async function endSession(id: string) {
+  const { error } = await supabase.rpc("fogon_end_session", { p_id: id });
+  if (error) throw error;
+}
+
+export async function endOtherSessions() {
+  const { error } = await supabase.auth.signOut({ scope: "others" });
+  if (error) throw error;
 }
 
 /* ---------- carga inicial ---------- */

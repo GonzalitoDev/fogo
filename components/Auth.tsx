@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { createProfile, getState, setState, toast } from "@/lib/store";
+import { createProfile, getState, setState, signOut, toast, verifyMfa } from "@/lib/store";
 import { friendlyError, usernameFromEmail } from "@/lib/chat";
 import { emailTypo, forgetAccount, maskEmail, savedAccounts, switchTo, type SavedAccount } from "@/lib/accounts";
 import { Ember, Icon } from "./Icon";
@@ -255,6 +255,62 @@ export function NewPasswordScreen() {
         )}
         <button className="btn primary" disabled={busy} style={{ height: 44 }}>
           {busy ? "Guardando…" : "Guardar contraseña"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+/** Tiene verificación en dos pasos: pide el código de la app autenticadora antes de entrar. */
+export function MfaScreen() {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  return (
+    <main className="auth">
+      <form
+        className="auth-card"
+        style={{ display: "grid", gap: 14 }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setErr("");
+          try {
+            await verifyMfa(code);
+          } catch (e) {
+            setErr(friendlyError(e));
+            setCode("");
+            setBusy(false);
+          }
+        }}
+      >
+        <h2 style={{ margin: 0 }}>Verificación en dos pasos</h2>
+        <p className="hint" style={{ margin: 0 }}>Abrí tu app autenticadora y poné el código de 6 dígitos de Fogón.</p>
+        <label className="field">
+          <span>Código</span>
+          <input
+            id="mfa-code"
+            className="input mfa-code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            required
+            pattern="[0-9]{6}"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          />
+        </label>
+        {err && (
+          <div className="err" role="alert">
+            {err}
+          </div>
+        )}
+        <button className="btn primary" disabled={busy || code.length !== 6} style={{ height: 44 }}>
+          {busy ? "Verificando…" : "Entrar"}
+        </button>
+        <button type="button" className="btn ghost" onClick={() => void signOut()}>
+          Usar otra cuenta
         </button>
       </form>
     </main>
