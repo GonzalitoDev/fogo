@@ -7,6 +7,7 @@ import { can, deleteMyAccount, endOtherSessions, endSession, fail, mySessions, s
 import type { Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { PasswordMeter } from "./Auth";
+import { ProblemsSettings } from "./Problems";
 import { deviceName, passwordStrength } from "@/lib/security";
 import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
 import { RolesDialog } from "./Roles";
@@ -99,12 +100,14 @@ export function SettingsScreen() {
 
 function UserSettings({ section }: { section: string }) {
   const pick = (id: string) => openSettings({ kind: "user", section: id });
+  const problems = useStore((s) => s.problemsUnread);
   const sections: Section[] = [
     { group: "Ajustes de usuario" },
     { id: "account", label: "Mi cuenta" },
     { id: "profiles", label: "Perfiles" },
     { id: "decorations", label: "Decoraciones 🎁" },
     { id: "privacy", label: "Privacidad y seguridad" },
+    { id: "problems", label: `Problemas 🛠️${problems ? ` (${problems})` : ""}` },
     { group: "Fogón Premium" },
     { id: "premium", label: "Premium ✨" },
     { group: "Ajustes de la aplicación" },
@@ -137,6 +140,7 @@ function UserSettings({ section }: { section: string }) {
       )}
       {section === "decorations" && <DecorationShop />}
       {section === "privacy" && <Privacy />}
+      {section === "problems" && <ProblemsSettings />}
       {section === "premium" && <PremiumSettings />}
       {section === "appearance" && <Appearance />}
       {section === "voice" && <VoiceSettings />}

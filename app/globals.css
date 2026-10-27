@@ -1658,3 +1658,26 @@ button.tag-chip:hover { border-color: var(--accent); }
 .pw-meter[data-score="3"] .pw-bar i { background: #5cb85c; }
 .pw-meter[data-score="4"] .pw-bar i { background: #2e9e5b; }
 .pw-meter small { color: var(--ink-2); }
+
+/* problemas: reportes a Gonza */
+.prob-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.prob-list li { list-style: none; }
+.prob-row { width: 100%; border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.prob-row:hover { outline: 1px solid var(--line); }
+.prob-row > div { flex: 1; }
+.prob-row.unread b { color: var(--accent); }
+.prob-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
+.prob-status { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: rgba(127,127,127,0.18); white-space: nowrap; }
+.prob-status.st-open { background: #e0a03033; color: #b97a10; }
+.prob-status.st-fixed { background: #2e9e5b33; color: #2e9e5b; }
+.prob-form { display: grid; gap: 14px; max-width: 620px; margin-bottom: 8px; }
+.prob-title { margin-bottom: 4px; overflow-wrap: anywhere; }
+.prob-info { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.prob-thread { display: grid; gap: 12px; margin: 16px 0; max-width: 680px; }
+.prob-msg { display: flex; gap: 10px; align-items: flex-start; }
+.prob-msg > div { min-width: 0; padding: 8px 12px; border-radius: 10px; background: rgba(127,127,127,0.1); }
+.prob-msg.from-owner > div { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.prob-msg b small { color: var(--ink-2); font-weight: 400; margin-left: 4px; }
+.prob-msg p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prob-reply { display: flex; gap: 8px; align-items: flex-end; max-width: 680px; }
+.prob-reply textarea { flex: 1; resize: vertical; }
