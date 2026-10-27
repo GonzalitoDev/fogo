@@ -621,6 +621,23 @@ function onProblemMsg(m: ProblemMsg) {
   void loadProblems().catch(() => {});
 }
 
+/* ---------- registro de cuentas (solo el dueño) ---------- */
+
+export type AccountRow = {
+  id: string; username: string; display_name: string; email: string | null; created_at: string;
+  last_sign_in_at: string | null; confirmed: boolean; mfa: boolean; sessions: number; last_ip: string | null; last_device: string | null;
+  banned: boolean; ban_reason: string | null; deleted: boolean; premium: boolean; staff: boolean;
+  servers: number; messages: number; problems: number;
+};
+
+export async function ownerAccounts(): Promise<AccountRow[]> {
+  const { data, error } = await supabase.rpc("fogon_owner_accounts");
+  if (error) throw error;
+  const list = (data ?? []) as AccountRow[];
+  void ensureProfiles(list.filter((a) => !a.deleted).map((a) => a.id));
+  return list;
+}
+
 /* ---------- carga inicial ---------- */
 
 type MemberRow = { server_id: string; user_id: string; joined_at?: string; profile: Profile | null };
