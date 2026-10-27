@@ -55,14 +55,9 @@ grant execute on function public.fogon_end_session(uuid) to authenticated;
 do $$
 declare def text := pg_get_functiondef('public.fogon_messages_before'::regproc);
 begin
-  def := replace(def, '    new.attachments := old.attachments;
-  else',
-'    new.attachments := old.attachments;
-    if current_user = ''authenticated'' then
-      new.pinned_at := old.pinned_at;
-      new.pinned_by := old.pinned_by;
-    end if;
-  else');
+  -- solo busca la línea (sin depender de los saltos de línea, que cambian al copiar y pegar)
+  def := replace(def, 'new.attachments := old.attachments;',
+    'new.attachments := old.attachments; if current_user = ''authenticated'' then new.pinned_at := old.pinned_at; new.pinned_by := old.pinned_by; end if;');
   if position('new.pinned_at := old.pinned_at' in def) = 0 then raise exception 'no pude ajustar fogon_messages_before'; end if;
   execute def;
 end $$;
