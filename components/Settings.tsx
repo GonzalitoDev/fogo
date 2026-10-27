@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { friendlyError } from "@/lib/chat";
 import { supabase } from "@/lib/supabase";
-import { can, deleteMyAccount, endOtherSessions, endSession, fail, mySessions, securityLog, type MySession, type SecurityEvent, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
+import { FOGON_OWNER, can, deleteMyAccount, endOtherSessions, endSession, fail, mySessions, securityLog, type MySession, type SecurityEvent, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
 import type { Server } from "@/lib/types";
 import { Icon } from "./Icon";
 import { PasswordMeter } from "./Auth";
 import { ProblemsSettings } from "./Problems";
+import { AccountsRegistry } from "./Accounts";
 import { deviceName, passwordStrength } from "@/lib/security";
 import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
 import { RolesDialog } from "./Roles";
@@ -101,6 +102,7 @@ export function SettingsScreen() {
 function UserSettings({ section }: { section: string }) {
   const pick = (id: string) => openSettings({ kind: "user", section: id });
   const problems = useStore((s) => s.problemsUnread);
+  const owner = useStore((s) => s.me?.id === FOGON_OWNER);
   const sections: Section[] = [
     { group: "Ajustes de usuario" },
     { id: "account", label: "Mi cuenta" },
@@ -108,6 +110,7 @@ function UserSettings({ section }: { section: string }) {
     { id: "decorations", label: "Decoraciones 🎁" },
     { id: "privacy", label: "Privacidad y seguridad" },
     { id: "problems", label: `Problemas 🛠️${problems ? ` (${problems})` : ""}` },
+    ...(owner ? [{ id: "accounts", label: "Registro de cuentas 🗂️" }] : []),
     { group: "Fogón Premium" },
     { id: "premium", label: "Premium ✨" },
     { group: "Ajustes de la aplicación" },
@@ -141,6 +144,7 @@ function UserSettings({ section }: { section: string }) {
       {section === "decorations" && <DecorationShop />}
       {section === "privacy" && <Privacy />}
       {section === "problems" && <ProblemsSettings />}
+      {section === "accounts" && owner && <AccountsRegistry />}
       {section === "premium" && <PremiumSettings />}
       {section === "appearance" && <Appearance />}
       {section === "voice" && <VoiceSettings />}

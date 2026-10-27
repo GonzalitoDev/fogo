@@ -551,8 +551,8 @@ async function warnNewLogins(session: Session) {
 export const FOGON_OWNER = "e7809edc-8559-4df6-8d2b-1fffc7a27719";
 export type ProblemKind = "bug" | "security" | "account" | "idea" | "other";
 export type ProblemStatus = "open" | "seen" | "fixed" | "closed";
-export type Problem = { id: string; user_id: string; kind: ProblemKind; title: string; info: Record<string, string>; status: ProblemStatus; unread_user: boolean; unread_owner: boolean; created_at: string; updated_at: string };
-export type ProblemMsg = { id: number; problem_id: string; author_id: string; body: string; created_at: string };
+export type Problem = { id: string; user_id: string | null; contact_email: string | null; kind: ProblemKind; title: string; info: Record<string, string>; status: ProblemStatus; unread_user: boolean; unread_owner: boolean; created_at: string; updated_at: string };
+export type ProblemMsg = { id: number; problem_id: string; author_id: string | null; body: string; created_at: string };
 
 const isOwner = () => state.me?.id === FOGON_OWNER;
 
@@ -562,7 +562,7 @@ export async function loadProblems(): Promise<Problem[]> {
   const list = (data ?? []) as Problem[];
   const unread = list.filter((p) => (isOwner() ? p.unread_owner || (p.user_id === state.me?.id && p.unread_user) : p.unread_user)).length;
   setState({ problemsUnread: unread });
-  void ensureProfiles([...new Set(list.map((p) => p.user_id))]);
+  void ensureProfiles([...new Set(list.flatMap((p) => (p.user_id ? [p.user_id] : [])))]);
   return list;
 }
 
@@ -591,6 +591,12 @@ export async function reportProblem(kind: ProblemKind, title: string, body: stri
   return data as string;
 }
 
+/** Desde la pantalla de inicio, sin cuenta (por ejemplo si no podés entrar): contestamos por email. */
+export async function reportProblemPublic(email: string, kind: ProblemKind, title: string, body: string) {
+  const { error } = await supabase.rpc("fogon_problem_report_public", { p_email: email, p_kind: kind, p_title: title, p_body: body, p_info: problemInfo() });
+  if (error) throw error;
+}
+
 export async function replyProblem(id: string, body: string) {
   const { error } = await supabase.rpc("fogon_problem_reply", { p_problem: id, p_body: body });
   if (error) throw error;
@@ -610,8 +616,26 @@ function onProblemMsg(m: ProblemMsg) {
   setState((s) => ({ problemPing: s.problemPing + 1 }));
   if (m.author_id === state.me?.id) return;
   const inProblems = state.settings?.kind === "user" && state.settings.section === "problems";
-  if (!inProblems) toast(isOwner() ? `🛠️ Nuevo mensaje en Problemas de @${state.profiles[m.author_id]?.username ?? "alguien"}` : "🛠️ Gonza te contestó en Problemas. Miralo en Ajustes → Problemas.");
+  const who = m.author_id ? state.profiles[m.author_id]?.username : null;
+  if (!inProblems) toast(isOwner() ? `🛠️ Nuevo mensaje en Problemas${who ? ` de @${who}` : ""}` : "🛠️ Gonza te contestó en Problemas. Miralo en Ajustes → Problemas.");
   void loadProblems().catch(() => {});
+}
+
+/* ---------- registro de cuentas (solo el dueño) ---------- */
+
+export type AccountRow = {
+  id: string; username: string; display_name: string; email: string | null; created_at: string;
+  last_sign_in_at: string | null; confirmed: boolean; mfa: boolean; sessions: number; last_ip: string | null; last_device: string | null;
+  banned: boolean; ban_reason: string | null; deleted: boolean; premium: boolean; staff: boolean;
+  servers: number; messages: number; problems: number;
+};
+
+export async function ownerAccounts(): Promise<AccountRow[]> {
+  const { data, error } = await supabase.rpc("fogon_owner_accounts");
+  if (error) throw error;
+  const list = (data ?? []) as AccountRow[];
+  void ensureProfiles(list.filter((a) => !a.deleted).map((a) => a.id));
+  return list;
 }
 
 /* ---------- carga inicial ---------- */

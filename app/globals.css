@@ -1681,3 +1681,19 @@ button.tag-chip:hover { border-color: var(--accent); }
 .prob-msg p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .prob-reply { display: flex; gap: 8px; align-items: flex-end; max-width: 680px; }
 .prob-reply textarea { flex: 1; resize: vertical; }
+.auth-problem { justify-self: center; margin-top: 14px; font-size: 13px; text-align: center; }
+
+/* registro de cuentas (solo el dueño) */
+.acc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 12px 0; max-width: 760px; }
+.acc-stats > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: 8px; background: rgba(127,127,127,0.1); }
+.acc-stats b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.acc-stats small { color: var(--ink-2); }
+.acc-tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; max-width: 760px; }
+.acc-tools .input { flex: 1; min-width: 200px; }
+.acc-list { max-width: 900px; }
+.acc-row { align-items: flex-start; flex-wrap: wrap; }
+.acc-who { display: flex; gap: 8px; align-items: center; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; min-width: 170px; }
+.acc-who span { display: grid; }
+.acc-who small { color: var(--ink-2); }
+.acc-data { flex: 1; min-width: 220px; }
+.acc-tags { display: flex; gap: 4px; flex-wrap: wrap; }
