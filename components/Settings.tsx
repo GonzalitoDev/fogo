@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { friendlyError } from "@/lib/chat";
 import { supabase } from "@/lib/supabase";
-import { can, deleteMyAccount, endOtherSessions, endSession, fail, mySessions, type MySession, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
+import { can, deleteMyAccount, endOtherSessions, endSession, fail, mySessions, securityLog, type MySession, type SecurityEvent, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
 import type { Server } from "@/lib/types";
 import { Icon } from "./Icon";
+import { PasswordMeter } from "./Auth";
+import { deviceName, passwordStrength } from "@/lib/security";
 import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
 import { RolesDialog } from "./Roles";
 import { AuditLog, BansDialog } from "./Moderation";
@@ -205,7 +207,8 @@ function Account({ onEdit }: { onEdit: () => void }) {
         className="pass-form"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (pass.length < 6) return toast("La contraseña tiene que tener al menos 6 caracteres.", "error");
+          const problem = passwordStrength(pass, email).problem;
+          if (problem) return toast(problem, "error");
           if (pass !== pass2) return toast("Las contraseñas no coinciden.", "error");
           setBusy(true);
           const { error } = await supabase.auth.updateUser({ password: pass });
@@ -219,6 +222,7 @@ function Account({ onEdit }: { onEdit: () => void }) {
         <label className="field">
           <span>Contraseña nueva</span>
           <input className="input" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
+          <PasswordMeter pass={pass} email={email} />
         </label>
         <label className="field">
           <span>Repetila</span>
@@ -232,6 +236,8 @@ function Account({ onEdit }: { onEdit: () => void }) {
       <TwoFactor />
       <hr className="settings-hr" />
       <Sessions />
+      <hr className="settings-hr" />
+      <SecurityActivity />
       {me.id !== "e7809edc-8559-4df6-8d2b-1fffc7a27719" && (
         <>
           <hr className="settings-hr" />
@@ -346,14 +352,6 @@ function confirm_(text: string) {
   return typeof window !== "undefined" && window.confirm(text);
 }
 
-/** "Navegador en sistema" a partir del user agent, lo justo para reconocer el dispositivo. */
-function deviceName(ua: string | null) {
-  if (!ua) return "Dispositivo desconocido";
-  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\/|Opera/.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Navegador";
-  const os = /Android/.test(ua) ? "Android" : /iPhone|iPad|iPod/.test(ua) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "";
-  return os ? `${browser} en ${os}` : browser;
-}
-
 function Sessions() {
   const [list, setList] = useState<MySession[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -425,6 +423,47 @@ function Sessions() {
           Cerrar sesión en todos los demás
         </button>
       )}
+    </>
+  );
+}
+
+const EVENT_TEXT: Record<SecurityEvent["kind"], string> = {
+  login: "Inicio de sesión",
+  mfa_on: "Activaste la verificación en dos pasos",
+  mfa_off: "Desactivaste la verificación en dos pasos",
+  password: "Cambió la contraseña",
+  email: "Cambió el email",
+};
+
+function SecurityActivity() {
+  const [list, setList] = useState<SecurityEvent[] | null>(null);
+  useEffect(() => {
+    securityLog()
+      .then(setList)
+      .catch(() => setList([]));
+  }, []);
+  const when = (d: string) => new Date(d).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
+  return (
+    <>
+      <h2>Actividad de seguridad</h2>
+      <p className="hint">Lo último que pasó con tu cuenta. Si algo no lo hiciste vos, cambiá la contraseña y cerrá las sesiones que no reconozcas.</p>
+      {list && list.length === 0 && <p className="hint">Todavía no hay actividad registrada.</p>}
+      <ul className="sess-list">
+        {(list ?? []).map((e) => (
+          <li key={e.id} className="sess">
+            <div>
+              <b>
+                {EVENT_TEXT[e.kind]}
+                {e.kind === "login" && ` · ${deviceName(e.user_agent)}`}
+              </b>
+              <small>
+                {e.ip ? `${e.ip} · ` : ""}
+                {when(e.created_at)}
+              </small>
+            </div>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

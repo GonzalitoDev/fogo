@@ -10,6 +10,7 @@ import type { AuditEntry, Ban, Boost, CustomEmoji, Poll, PollVote, Timeout, Voic
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 import type { ServerStructure } from "./discord";
 import type { SupportDraft } from "./ai";
+import { deviceName } from "./security";
 
 /* ---------- store mínimo ---------- */
 
@@ -297,6 +298,7 @@ async function onSession(session: Session | null) {
   if (session.user.user_metadata?.must_change_password) setState({ recovery: true });
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
+  void warnNewLogins(session);
   void loadBadges();
   void loadBoosts();
   void loadVoiceMods();
@@ -509,6 +511,34 @@ export async function endSession(id: string) {
 export async function endOtherSessions() {
   const { error } = await supabase.auth.signOut({ scope: "others" });
   if (error) throw error;
+}
+
+export type SecurityEvent = { id: number; kind: "login" | "mfa_on" | "mfa_off" | "password" | "email"; session_id: string | null; user_agent: string | null; ip: string | null; created_at: string };
+
+export async function securityLog(limit = 30): Promise<SecurityEvent[]> {
+  const { data, error } = await supabase.from("fogon_security_log").select("id, kind, session_id, user_agent, ip, created_at").order("id", { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data ?? []) as SecurityEvent[];
+}
+
+/** Si alguien entró a tu cuenta desde otro lado desde la última vez, te avisamos. */
+async function warnNewLogins(session: Session) {
+  const key = `fogon:seclog:${session.user.id}`;
+  let seen = 0;
+  try {
+    seen = Number(localStorage.getItem(key) ?? 0);
+  } catch {}
+  const list = await securityLog(10).catch(() => []);
+  if (!list.length) return;
+  try {
+    localStorage.setItem(key, String(list[0].id));
+  } catch {}
+  if (!seen) return; // primera vez en este dispositivo: no hay con qué comparar
+  const mine = JSON.parse(atob(session.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).session_id as string | undefined;
+  const fresh = list.filter((e) => e.id > seen && (e.kind !== "login" || e.session_id !== mine));
+  const login = fresh.find((e) => e.kind === "login");
+  if (login) toast(`🔔 Entraron a tu cuenta desde ${deviceName(login.user_agent)}${login.ip ? ` (${login.ip})` : ""}. ¿No fuiste vos? Revisá Ajustes → Mi cuenta.`, "error");
+  else if (fresh.some((e) => e.kind !== "login")) toast("🔔 Hubo cambios de seguridad en tu cuenta. Revisalos en Ajustes → Mi cuenta.");
 }
 
 /* ---------- carga inicial ---------- */
