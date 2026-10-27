@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { friendlyError } from "@/lib/chat";
 import { supabase } from "@/lib/supabase";
-import { can, deleteMyAccount, fail, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
+import { can, deleteMyAccount, endOtherSessions, endSession, fail, mySessions, securityLog, type MySession, type SecurityEvent, mediaUrl, openSettings, setSounds, signOut, toast, unblockUser, useStore } from "@/lib/store";
 import type { Server } from "@/lib/types";
 import { Icon } from "./Icon";
+import { PasswordMeter } from "./Auth";
+import { ProblemsSettings } from "./Problems";
+import { deviceName, passwordStrength } from "@/lib/security";
 import { ProfileDialog, InviteDialog, ServerSettingsDialog } from "./Dialogs";
 import { RolesDialog } from "./Roles";
 import { AuditLog, BansDialog } from "./Moderation";
@@ -97,12 +100,14 @@ export function SettingsScreen() {
 
 function UserSettings({ section }: { section: string }) {
   const pick = (id: string) => openSettings({ kind: "user", section: id });
+  const problems = useStore((s) => s.problemsUnread);
   const sections: Section[] = [
     { group: "Ajustes de usuario" },
     { id: "account", label: "Mi cuenta" },
     { id: "profiles", label: "Perfiles" },
     { id: "decorations", label: "Decoraciones 🎁" },
     { id: "privacy", label: "Privacidad y seguridad" },
+    { id: "problems", label: `Problemas 🛠️${problems ? ` (${problems})` : ""}` },
     { group: "Fogón Premium" },
     { id: "premium", label: "Premium ✨" },
     { group: "Ajustes de la aplicación" },
@@ -135,6 +140,7 @@ function UserSettings({ section }: { section: string }) {
       )}
       {section === "decorations" && <DecorationShop />}
       {section === "privacy" && <Privacy />}
+      {section === "problems" && <ProblemsSettings />}
       {section === "premium" && <PremiumSettings />}
       {section === "appearance" && <Appearance />}
       {section === "voice" && <VoiceSettings />}
@@ -205,7 +211,8 @@ function Account({ onEdit }: { onEdit: () => void }) {
         className="pass-form"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (pass.length < 6) return toast("La contraseña tiene que tener al menos 6 caracteres.", "error");
+          const problem = passwordStrength(pass, email).problem;
+          if (problem) return toast(problem, "error");
           if (pass !== pass2) return toast("Las contraseñas no coinciden.", "error");
           setBusy(true);
           const { error } = await supabase.auth.updateUser({ password: pass });
@@ -219,6 +226,7 @@ function Account({ onEdit }: { onEdit: () => void }) {
         <label className="field">
           <span>Contraseña nueva</span>
           <input className="input" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
+          <PasswordMeter pass={pass} email={email} />
         </label>
         <label className="field">
           <span>Repetila</span>
@@ -228,6 +236,12 @@ function Account({ onEdit }: { onEdit: () => void }) {
           Cambiar contraseña
         </button>
       </form>
+      <hr className="settings-hr" />
+      <TwoFactor />
+      <hr className="settings-hr" />
+      <Sessions />
+      <hr className="settings-hr" />
+      <SecurityActivity />
       {me.id !== "e7809edc-8559-4df6-8d2b-1fffc7a27719" && (
         <>
           <hr className="settings-hr" />
@@ -239,6 +253,221 @@ function Account({ onEdit }: { onEdit: () => void }) {
           {askDelete && <DeleteAccountDialog onClose={() => setAskDelete(false)} />}
         </>
       )}
+    </>
+  );
+}
+
+/** Verificación en dos pasos con una app autenticadora (Google Authenticator, Authy, 1Password…). */
+function TwoFactor() {
+  const [factorId, setFactorId] = useState<string | null | undefined>(undefined); // undefined = cargando
+  const [setup, setSetup] = useState<{ id: string; qr: string; secret: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) return fail(error);
+    setFactorId(data.totp.find((f) => f.status === "verified")?.id ?? null);
+  };
+  useEffect(() => void load(), []);
+
+  const start = async () => {
+    setBusy(true);
+    try {
+      // un intento anterior sin terminar deja un factor sin verificar: lo sacamos para empezar de cero
+      const { data: list } = await supabase.auth.mfa.listFactors();
+      for (const f of list?.all ?? []) if (f.status !== "verified") await supabase.auth.mfa.unenroll({ factorId: f.id });
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Fogón" });
+      if (error) throw error;
+      setSetup({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
+      setCode("");
+    } catch (e) {
+      toast(friendlyError(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!setup) return;
+    setBusy(true);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: setup.id, code });
+    setBusy(false);
+    if (error) return toast("El código no es correcto. Probá con el que aparece ahora en la app.", "error");
+    setSetup(null);
+    toast("🔐 Activaste la verificación en dos pasos");
+    void load();
+  };
+
+  const disable = async () => {
+    if (!factorId || !confirm_("¿Desactivar la verificación en dos pasos? Tu cuenta va a quedar protegida solo con la contraseña.")) return;
+    setBusy(true);
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    setBusy(false);
+    if (error) return toast(friendlyError(error), "error");
+    toast("Desactivaste la verificación en dos pasos");
+    void load();
+  };
+
+  return (
+    <>
+      <h2>Verificación en dos pasos</h2>
+      <p className="hint">Además de la contraseña, al entrar te pedimos un código de tu app autenticadora. Si alguien te roba la contraseña, igual no puede entrar.</p>
+      {factorId === undefined ? null : factorId ? (
+        <div className="mfa-on">
+          <span className="mfa-badge">✅ Activada</span>
+          <button className="btn danger" disabled={busy} onClick={() => void disable()}>
+            Desactivar
+          </button>
+        </div>
+      ) : setup ? (
+        <form className="pass-form" onSubmit={confirm}>
+          <ol className="mfa-steps">
+            <li>Escaneá este código con tu app autenticadora (Google Authenticator, Authy, 1Password…).</li>
+            <li>Poné el código de 6 dígitos que te muestra.</li>
+          </ol>
+          <img className="mfa-qr" src={setup.qr} alt="Código QR para la app autenticadora" width={180} height={180} />
+          <p className="hint">
+            ¿No podés escanear? Cargá esta clave a mano: <code className="mfa-secret">{setup.secret}</code>
+          </p>
+          <label className="field">
+            <span>Código</span>
+            <input className="input mfa-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn primary" disabled={busy || code.length !== 6}>
+              Activar
+            </button>
+            <button type="button" className="btn ghost" onClick={() => setSetup(null)}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button className="btn primary" disabled={busy} onClick={() => void start()}>
+          Activar verificación en dos pasos
+        </button>
+      )}
+    </>
+  );
+}
+
+function confirm_(text: string) {
+  return typeof window !== "undefined" && window.confirm(text);
+}
+
+function Sessions() {
+  const [list, setList] = useState<MySession[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () =>
+    mySessions()
+      .then(setList)
+      .catch((e) => toast(friendlyError(e), "error"));
+  useEffect(() => void load(), []);
+  const others = (list ?? []).filter((x) => !x.current);
+  const when = (d: string) => new Date(d).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
+  return (
+    <>
+      <h2>Dispositivos</h2>
+      <p className="hint">Estos son los lugares donde tu cuenta tiene la sesión abierta. Si ves uno que no reconocés, cerralo y cambiá tu contraseña.</p>
+      <ul className="sess-list">
+        {(list ?? []).map((x) => (
+          <li key={x.id} className="sess">
+            <div>
+              <b>
+                {deviceName(x.user_agent)}
+                {x.current && <span className="sess-here"> · Este dispositivo</span>}
+              </b>
+              <small>
+                {x.ip ? `${x.ip} · ` : ""}Última actividad: {when(x.last_seen)}
+                {x.aal === "aal2" ? " · 🔐 con dos pasos" : ""}
+              </small>
+            </div>
+            {!x.current && (
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await endSession(x.id);
+                    toast("Cerraste esa sesión");
+                    await load();
+                  } catch (e) {
+                    toast(friendlyError(e), "error");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Cerrar
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {others.length > 0 && (
+        <button
+          className="btn danger"
+          disabled={busy}
+          onClick={async () => {
+            if (!confirm_(`¿Cerrar la sesión en los otros ${others.length} dispositivos?`)) return;
+            setBusy(true);
+            try {
+              await endOtherSessions();
+              toast("Cerraste la sesión en todos los demás dispositivos");
+              await load();
+            } catch (e) {
+              toast(friendlyError(e), "error");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Cerrar sesión en todos los demás
+        </button>
+      )}
+    </>
+  );
+}
+
+const EVENT_TEXT: Record<SecurityEvent["kind"], string> = {
+  login: "Inicio de sesión",
+  mfa_on: "Activaste la verificación en dos pasos",
+  mfa_off: "Desactivaste la verificación en dos pasos",
+  password: "Cambió la contraseña",
+  email: "Cambió el email",
+};
+
+function SecurityActivity() {
+  const [list, setList] = useState<SecurityEvent[] | null>(null);
+  useEffect(() => {
+    securityLog()
+      .then(setList)
+      .catch(() => setList([]));
+  }, []);
+  const when = (d: string) => new Date(d).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
+  return (
+    <>
+      <h2>Actividad de seguridad</h2>
+      <p className="hint">Lo último que pasó con tu cuenta. Si algo no lo hiciste vos, cambiá la contraseña y cerrá las sesiones que no reconozcas.</p>
+      {list && list.length === 0 && <p className="hint">Todavía no hay actividad registrada.</p>}
+      <ul className="sess-list">
+        {(list ?? []).map((e) => (
+          <li key={e.id} className="sess">
+            <div>
+              <b>
+                {EVENT_TEXT[e.kind]}
+                {e.kind === "login" && ` · ${deviceName(e.user_agent)}`}
+              </b>
+              <small>
+                {e.ip ? `${e.ip} · ` : ""}
+                {when(e.created_at)}
+              </small>
+            </div>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

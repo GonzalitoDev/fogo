@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { createProfile, getState, setState, toast } from "@/lib/store";
+import { createProfile, getState, setState, signOut, toast, verifyMfa } from "@/lib/store";
 import { friendlyError, usernameFromEmail } from "@/lib/chat";
 import { emailTypo, forgetAccount, maskEmail, savedAccounts, switchTo, type SavedAccount } from "@/lib/accounts";
+import { passwordStrength } from "@/lib/security";
 import { Ember, Icon } from "./Icon";
 import { Avatar, COLORS } from "./ui";
 
@@ -27,6 +28,10 @@ export function AuthScreen() {
     setErr("");
     // al crear la cuenta, un email mal escrito (gmail.con) hace que después no puedas entrar
     if (mode !== "in" && showTypo) return setErr("Revisá el email: parece mal escrito.");
+    if (mode === "up") {
+      const problem = passwordStrength(pass, email).problem;
+      if (problem) return setErr(problem);
+    }
     setBusy(true);
     try {
       if (mode === "reset") {
@@ -183,10 +188,11 @@ export function AuthScreen() {
                     type="password"
                     autoComplete={mode === "in" ? "current-password" : "new-password"}
                     required
-                    minLength={6}
+                    minLength={mode === "in" ? 6 : 8}
                     value={pass}
                     onChange={(e) => setPass(e.target.value)}
                   />
+                  {mode === "up" && <PasswordMeter pass={pass} email={email} />}
                   {mode === "in" && (
                     <button type="button" className="link-btn forgot" onClick={() => setMode("reset")}>
                       ¿Olvidaste tu contraseña?
@@ -215,6 +221,20 @@ export function AuthScreen() {
   );
 }
 
+/** Barrita de fuerza de la contraseña, con el motivo si no se puede usar. */
+export function PasswordMeter({ pass, email }: { pass: string; email?: string }) {
+  if (!pass) return null;
+  const s = passwordStrength(pass, email);
+  return (
+    <span className="pw-meter" data-score={s.score} role="status">
+      <span className="pw-bar">
+        <i style={{ width: `${s.score * 25}%` }} />
+      </span>
+      <small>{s.problem ?? s.label}</small>
+    </span>
+  );
+}
+
 /** Entró con el link de "olvidé mi contraseña": elige una nueva. */
 export function NewPasswordScreen() {
   const [pass, setPass] = useState("");
@@ -228,6 +248,8 @@ export function NewPasswordScreen() {
         style={{ display: "grid", gap: 14 }}
         onSubmit={async (e) => {
           e.preventDefault();
+          const problem = passwordStrength(pass, getState().session?.user.email).problem;
+          if (problem) return setErr(problem);
           if (pass !== again) return setErr("Las contraseñas no coinciden.");
           setBusy(true);
           setErr("");
@@ -242,11 +264,12 @@ export function NewPasswordScreen() {
         <p className="hint" style={{ margin: 0 }}>Para cuidar tu cuenta, elegí una contraseña que solo sepas vos.</p>
         <label className="field">
           <span>Contraseña nueva</span>
-          <input id="new-password" className="input" type="password" autoComplete="new-password" required minLength={6} value={pass} onChange={(e) => setPass(e.target.value)} />
+          <input id="new-password" className="input" type="password" autoComplete="new-password" required minLength={8} value={pass} onChange={(e) => setPass(e.target.value)} />
+          <PasswordMeter pass={pass} email={getState().session?.user.email} />
         </label>
         <label className="field">
           <span>Repetila</span>
-          <input id="new-password-2" className="input" type="password" autoComplete="new-password" required minLength={6} value={again} onChange={(e) => setAgain(e.target.value)} />
+          <input id="new-password-2" className="input" type="password" autoComplete="new-password" required minLength={8} value={again} onChange={(e) => setAgain(e.target.value)} />
         </label>
         {err && (
           <div className="err" role="alert">
@@ -255,6 +278,62 @@ export function NewPasswordScreen() {
         )}
         <button className="btn primary" disabled={busy} style={{ height: 44 }}>
           {busy ? "Guardando…" : "Guardar contraseña"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+/** Tiene verificación en dos pasos: pide el código de la app autenticadora antes de entrar. */
+export function MfaScreen() {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  return (
+    <main className="auth">
+      <form
+        className="auth-card"
+        style={{ display: "grid", gap: 14 }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setErr("");
+          try {
+            await verifyMfa(code);
+          } catch (e) {
+            setErr(friendlyError(e));
+            setCode("");
+            setBusy(false);
+          }
+        }}
+      >
+        <h2 style={{ margin: 0 }}>Verificación en dos pasos</h2>
+        <p className="hint" style={{ margin: 0 }}>Abrí tu app autenticadora y poné el código de 6 dígitos de Fogón.</p>
+        <label className="field">
+          <span>Código</span>
+          <input
+            id="mfa-code"
+            className="input mfa-code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            autoFocus
+            required
+            pattern="[0-9]{6}"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          />
+        </label>
+        {err && (
+          <div className="err" role="alert">
+            {err}
+          </div>
+        )}
+        <button className="btn primary" disabled={busy || code.length !== 6} style={{ height: 44 }}>
+          {busy ? "Verificando…" : "Entrar"}
+        </button>
+        <button type="button" className="btn ghost" onClick={() => void signOut()}>
+          Usar otra cuenta
         </button>
       </form>
     </main>

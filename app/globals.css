@@ -1639,3 +1639,45 @@ button.tag-chip:hover { border-color: var(--accent); }
 .boost-person.official { background: color-mix(in srgb, #f2a531 12%, transparent); border-radius: 8px; padding: 6px; }
 .boost-official-logo { width: 24px; height: 24px; border-radius: 50%; background: #f2a531; display: inline-grid; place-items: center; overflow: hidden; flex: none; }
 .boost-official-logo img { width: 100%; height: 100%; object-fit: cover; }
+/* seguridad: dos pasos y dispositivos */
+.mfa-code { font-size: 22px; letter-spacing: 0.3em; text-align: center; font-variant-numeric: tabular-nums; }
+.mfa-on { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mfa-badge { font-weight: 700; color: var(--ink); }
+.mfa-steps { margin: 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 4px; }
+.mfa-qr { background: #fff; padding: 8px; border-radius: 8px; }
+.mfa-secret { overflow-wrap: anywhere; user-select: all; }
+.sess-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; max-width: 560px; }
+.sess { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--bg-2, rgba(127,127,127,0.08)); }
+.sess > div { display: grid; gap: 2px; min-width: 0; }
+.sess small { color: var(--ink-2); overflow-wrap: anywhere; }
+.sess-here { color: var(--ink-2); font-weight: 400; }
+.pw-meter { display: grid; gap: 4px; font-weight: 400; }
+.pw-bar { height: 4px; border-radius: 2px; background: rgba(127,127,127,0.25); overflow: hidden; }
+.pw-bar i { display: block; height: 100%; transition: width 0.2s; background: #d9534f; }
+.pw-meter[data-score="2"] .pw-bar i { background: #e0a030; }
+.pw-meter[data-score="3"] .pw-bar i { background: #5cb85c; }
+.pw-meter[data-score="4"] .pw-bar i { background: #2e9e5b; }
+.pw-meter small { color: var(--ink-2); }
+
+/* problemas: reportes a Gonza */
+.prob-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.prob-list li { list-style: none; }
+.prob-row { width: 100%; border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.prob-row:hover { outline: 1px solid var(--line); }
+.prob-row > div { flex: 1; }
+.prob-row.unread b { color: var(--accent); }
+.prob-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
+.prob-status { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: rgba(127,127,127,0.18); white-space: nowrap; }
+.prob-status.st-open { background: #e0a03033; color: #b97a10; }
+.prob-status.st-fixed { background: #2e9e5b33; color: #2e9e5b; }
+.prob-form { display: grid; gap: 14px; max-width: 620px; margin-bottom: 8px; }
+.prob-title { margin-bottom: 4px; overflow-wrap: anywhere; }
+.prob-info { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.prob-thread { display: grid; gap: 12px; margin: 16px 0; max-width: 680px; }
+.prob-msg { display: flex; gap: 10px; align-items: flex-start; }
+.prob-msg > div { min-width: 0; padding: 8px 12px; border-radius: 10px; background: rgba(127,127,127,0.1); }
+.prob-msg.from-owner > div { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.prob-msg b small { color: var(--ink-2); font-weight: 400; margin-left: 4px; }
+.prob-msg p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prob-reply { display: flex; gap: 8px; align-items: flex-end; max-width: 680px; }
+.prob-reply textarea { flex: 1; resize: vertical; }

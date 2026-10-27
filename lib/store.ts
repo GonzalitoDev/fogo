@@ -10,6 +10,7 @@ import type { AuditEntry, Ban, Boost, CustomEmoji, Poll, PollVote, Timeout, Voic
 import type { Attachment, Channel, Message, Perm, Place, Profile, Reaction, Role, Server, Unread } from "./types";
 import type { ServerStructure } from "./discord";
 import type { SupportDraft } from "./ai";
+import { deviceName } from "./security";
 
 /* ---------- store mínimo ---------- */
 
@@ -20,6 +21,9 @@ export type State = {
   session: Session | null;
   me: Profile | null;
   needsProfile: boolean;
+  problemsUnread: number; // reportes de problemas con algo nuevo para mí (respuestas, o reportes nuevos si soy Gonza)
+  problemPing: number; // sube cada vez que llega un mensaje nuevo de un reporte, para recargar la pantalla
+  mfa: boolean; // tiene verificación en dos pasos y falta poner el código
   recovery: boolean; // entró con el link de "olvidé mi contraseña": tiene que elegir una nueva
   suspended: { reason: string } | null; // mi cuenta está baneada de Fogón
   accountBans: Record<string, { reason: string; created_at: string }>; // admins: cuentas baneadas
@@ -84,6 +88,9 @@ const initial: State = {
   me: null,
   needsProfile: false,
   suspended: null,
+  mfa: false,
+  problemsUnread: 0,
+  problemPing: 0,
   recovery: false,
   accountBans: {},
   servers: {},
@@ -272,6 +279,9 @@ async function onSession(session: Session | null) {
   // el aviso de cuenta suspendida queda hasta que alguien inicie sesión de nuevo
   setState({ ...initial, suspended: session ? null : state.suspended, session, ready: false, online: typeof navigator === "undefined" ? true : navigator.onLine });
   if (!session) return setState({ ready: true });
+  // con dos pasos activados, la base no muestra nada hasta que se ponga el código
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2") return setState({ ready: true, mfa: true });
   const { data: me, error } = await supabase.from("fogon_profiles").select(`${PCOLS}`).eq("id", session.user.id).maybeSingle();
   if (error) {
     fail(error);
@@ -292,6 +302,8 @@ async function onSession(session: Session | null) {
   if (session.user.user_metadata?.must_change_password) setState({ recovery: true });
   setState({ me, profiles: { [me.id]: me } });
   await loadAll();
+  void warnNewLogins(session);
+  void loadProblems().catch(() => {});
   void loadBadges();
   void loadBoosts();
   void loadVoiceMods();
@@ -468,6 +480,138 @@ export async function signOut() {
   // la cuenta queda guardada en este dispositivo, pero sin sesión
   if (state.me) forgetSession(state.me.id);
   await supabase.auth.signOut();
+}
+
+/* ---------- verificación en dos pasos y sesiones ---------- */
+
+/** Segundo paso al entrar: código de 6 dígitos de la app autenticadora. */
+export async function verifyMfa(code: string) {
+  const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: await totpFactorId(), code: code.replace(/\s/g, "") });
+  if (error) throw new Error("El código no es correcto o ya venció. Probá con el que aparece ahora.");
+  // es el mismo usuario, así que onAuthStateChange no recarga: cargamos todo ahora que la base deja ver
+  await onSession((await supabase.auth.getSession()).data.session);
+}
+
+async function totpFactorId() {
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) throw error;
+  const f = data.totp.find((x) => x.status === "verified");
+  if (!f) throw new Error("No tenés la verificación en dos pasos activada.");
+  return f.id;
+}
+
+export type MySession = { id: string; created_at: string; last_seen: string; user_agent: string | null; ip: string | null; aal: string; current: boolean };
+
+export async function mySessions(): Promise<MySession[]> {
+  const { data, error } = await supabase.rpc("fogon_my_sessions");
+  if (error) throw error;
+  return (data ?? []) as MySession[];
+}
+
+export async function endSession(id: string) {
+  const { error } = await supabase.rpc("fogon_end_session", { p_id: id });
+  if (error) throw error;
+}
+
+export async function endOtherSessions() {
+  const { error } = await supabase.auth.signOut({ scope: "others" });
+  if (error) throw error;
+}
+
+export type SecurityEvent = { id: number; kind: "login" | "mfa_on" | "mfa_off" | "password" | "email"; session_id: string | null; user_agent: string | null; ip: string | null; created_at: string };
+
+export async function securityLog(limit = 30): Promise<SecurityEvent[]> {
+  const { data, error } = await supabase.from("fogon_security_log").select("id, kind, session_id, user_agent, ip, created_at").order("id", { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data ?? []) as SecurityEvent[];
+}
+
+/** Si alguien entró a tu cuenta desde otro lado desde la última vez, te avisamos. */
+async function warnNewLogins(session: Session) {
+  const key = `fogon:seclog:${session.user.id}`;
+  let seen = 0;
+  try {
+    seen = Number(localStorage.getItem(key) ?? 0);
+  } catch {}
+  const list = await securityLog(10).catch(() => []);
+  if (!list.length) return;
+  try {
+    localStorage.setItem(key, String(list[0].id));
+  } catch {}
+  if (!seen) return; // primera vez en este dispositivo: no hay con qué comparar
+  const mine = JSON.parse(atob(session.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).session_id as string | undefined;
+  const fresh = list.filter((e) => e.id > seen && (e.kind !== "login" || e.session_id !== mine));
+  const login = fresh.find((e) => e.kind === "login");
+  if (login) toast(`🔔 Entraron a tu cuenta desde ${deviceName(login.user_agent)}${login.ip ? ` (${login.ip})` : ""}. ¿No fuiste vos? Revisá Ajustes → Mi cuenta.`, "error");
+  else if (fresh.some((e) => e.kind !== "login")) toast("🔔 Hubo cambios de seguridad en tu cuenta. Revisalos en Ajustes → Mi cuenta.");
+}
+
+/* ---------- problemas: reportes que le llegan a Gonza ---------- */
+
+export const FOGON_OWNER = "e7809edc-8559-4df6-8d2b-1fffc7a27719";
+export type ProblemKind = "bug" | "security" | "account" | "idea" | "other";
+export type ProblemStatus = "open" | "seen" | "fixed" | "closed";
+export type Problem = { id: string; user_id: string; kind: ProblemKind; title: string; info: Record<string, string>; status: ProblemStatus; unread_user: boolean; unread_owner: boolean; created_at: string; updated_at: string };
+export type ProblemMsg = { id: number; problem_id: string; author_id: string; body: string; created_at: string };
+
+const isOwner = () => state.me?.id === FOGON_OWNER;
+
+export async function loadProblems(): Promise<Problem[]> {
+  const { data, error } = await supabase.from("fogon_problems").select("*").order("updated_at", { ascending: false }).limit(200);
+  if (error) throw error;
+  const list = (data ?? []) as Problem[];
+  const unread = list.filter((p) => (isOwner() ? p.unread_owner || (p.user_id === state.me?.id && p.unread_user) : p.unread_user)).length;
+  setState({ problemsUnread: unread });
+  void ensureProfiles([...new Set(list.map((p) => p.user_id))]);
+  return list;
+}
+
+export async function loadProblemMsgs(id: string): Promise<ProblemMsg[]> {
+  const { data, error } = await supabase.from("fogon_problem_msgs").select("*").eq("problem_id", id).order("id");
+  if (error) throw error;
+  return (data ?? []) as ProblemMsg[];
+}
+
+/** Datos del dispositivo que ayudan a reproducir el problema (nada privado). */
+function problemInfo(): Record<string, string> {
+  const info: Record<string, string> = {};
+  try {
+    info.dispositivo = deviceName(navigator.userAgent);
+    info.pantalla = `${window.innerWidth}×${window.innerHeight}`;
+    info.idioma = navigator.language;
+    const ch = state.place.channelId ? state.channels[state.place.channelId] : undefined;
+    if (ch) info.donde = ch.server_id ? `${state.servers[ch.server_id]?.name ?? "servidor"} › #${ch.name}` : "mensaje privado";
+  } catch {}
+  return info;
+}
+
+export async function reportProblem(kind: ProblemKind, title: string, body: string) {
+  const { data, error } = await supabase.rpc("fogon_problem_report", { p_kind: kind, p_title: title, p_body: body, p_info: problemInfo() });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function replyProblem(id: string, body: string) {
+  const { error } = await supabase.rpc("fogon_problem_reply", { p_problem: id, p_body: body });
+  if (error) throw error;
+}
+
+export async function setProblemStatus(id: string, status: ProblemStatus) {
+  const { error } = await supabase.rpc("fogon_problem_status", { p_problem: id, p_status: status });
+  if (error) throw error;
+}
+
+export async function seenProblem(id: string) {
+  await supabase.rpc("fogon_problem_seen", { p_problem: id });
+  void loadProblems().catch(() => {});
+}
+
+function onProblemMsg(m: ProblemMsg) {
+  setState((s) => ({ problemPing: s.problemPing + 1 }));
+  if (m.author_id === state.me?.id) return;
+  const inProblems = state.settings?.kind === "user" && state.settings.section === "problems";
+  if (!inProblems) toast(isOwner() ? `🛠️ Nuevo mensaje en Problemas de @${state.profiles[m.author_id]?.username ?? "alguien"}` : "🛠️ Gonza te contestó en Problemas. Miralo en Ajustes → Problemas.");
+  void loadProblems().catch(() => {});
 }
 
 /* ---------- carga inicial ---------- */
@@ -1487,6 +1631,7 @@ function startRealtime() {
       if (r?.message_id) setState((s) => ({ polls: { ...s.polls, [r.message_id]: r } }));
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_admins" }, () => badgesSoon())
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "fogon_problem_msgs" }, (p) => onProblemMsg(p.new as ProblemMsg))
     .on("postgres_changes", { event: "*", schema: "public", table: "fogon_account_bans" }, (p) => {
       const r = (p.new ?? {}) as { user_id?: string; reason?: string };
       if (p.eventType === "INSERT" && r.user_id === state.me?.id) return void suspend(r.reason ?? "");
