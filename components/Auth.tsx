@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { createProfile, getState, setState, signOut, toast, verifyMfa } from "@/lib/store";
+import { createProfile, getState, reportProblemPublic, setState, signOut, toast, verifyMfa, type ProblemKind } from "@/lib/store";
+import { KIND } from "./Problems";
 import { friendlyError, usernameFromEmail } from "@/lib/chat";
 import { emailTypo, forgetAccount, maskEmail, savedAccounts, switchTo, type SavedAccount } from "@/lib/accounts";
 import { passwordStrength } from "@/lib/security";
@@ -22,6 +23,7 @@ export function AuthScreen() {
   const typo = emailTypo(email);
   const showTypo = !!typo && typoOk !== email;
   const passRef = useRef<HTMLInputElement>(null);
+  const [problem, setProblem] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +89,9 @@ export function AuthScreen() {
           </span>
           <h1>Fogón</h1>
         </div>
-        {sent ? (
+        {problem ? (
+          <LoginProblem email={email} onClose={() => setProblem(false)} />
+        ) : sent ? (
           <>
             <h2>Revisá tu email</h2>
             <p className="hint" style={{ fontSize: 15 }}>
@@ -214,10 +218,89 @@ export function AuthScreen() {
                 </button>
               )}
             </form>
+            <button type="button" className="link-btn auth-problem" onClick={() => setProblem(true)}>
+              ¿Tenés un problema para entrar o con la app? Avisale a Gonza
+            </button>
           </>
         )}
       </div>
     </main>
+  );
+}
+
+/** Reportar un problema sin iniciar sesión: le llega a Gonza y te contesta por email. */
+function LoginProblem({ email: initial, onClose }: { email: string; onClose: () => void }) {
+  const [email, setEmail] = useState(initial);
+  const [kind, setKind] = useState<ProblemKind>("account");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
+  if (done)
+    return (
+      <>
+        <h2>¡Listo, le llegó a Gonza! 📨</h2>
+        <p className="hint" style={{ fontSize: 15 }}>
+          Te va a contestar a <b>{email}</b>. Revisá también la carpeta de spam.
+        </p>
+        <button className="btn ghost" onClick={onClose}>
+          Volver
+        </button>
+      </>
+    );
+  return (
+    <form
+      style={{ display: "grid", gap: 14 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr("");
+        try {
+          await reportProblemPublic(email, kind, title, body);
+          setDone(true);
+        } catch (e) {
+          setErr(friendlyError(e));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div>
+        <h2 style={{ margin: 0 }}>Reportar un problema</h2>
+        <p className="hint">Le llega directo a Gonza, el creador de Fogón, y te contesta por email. Nunca pongas tu contraseña.</p>
+      </div>
+      <div className="support-chips" role="radiogroup" aria-label="Tipo de problema">
+        {(Object.keys(KIND) as ProblemKind[]).map((k) => (
+          <button type="button" key={k} role="radio" aria-checked={kind === k} className={`tag-chip${kind === k ? " on" : ""}`} onClick={() => setKind(k)}>
+            {KIND[k]}
+          </button>
+        ))}
+      </div>
+      <label className="field">
+        <span>Tu email (para contestarte)</span>
+        <input className="input" type="email" autoComplete="email" required maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Título</span>
+        <input className="input" required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej.: no me llega el mail para cambiar la contraseña" />
+      </label>
+      <label className="field">
+        <span>Contá qué pasó</span>
+        <textarea className="input" required minLength={10} rows={4} maxLength={4000} value={body} onChange={(e) => setBody(e.target.value)} />
+      </label>
+      {err && (
+        <div className="err" role="alert">
+          {err}
+        </div>
+      )}
+      <button className="btn primary" disabled={busy} style={{ height: 44 }}>
+        {busy ? "Mandando…" : "Mandar a Gonza"}
+      </button>
+      <button type="button" className="btn ghost" onClick={onClose}>
+        Volver
+      </button>
+    </form>
   );
 }
 

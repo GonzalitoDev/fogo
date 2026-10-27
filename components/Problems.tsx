@@ -19,7 +19,7 @@ import {
 } from "@/lib/store";
 import { Avatar } from "./ui";
 
-const KIND: Record<ProblemKind, string> = {
+export const KIND: Record<ProblemKind, string> = {
   bug: "🐛 Algo no anda",
   security: "🔐 Seguridad",
   account: "👤 Mi cuenta",
@@ -94,7 +94,7 @@ export function ProblemsSettings() {
 }
 
 function ProblemRow({ p, owner, onOpen }: { p: Problem; owner: boolean; onOpen: () => void }) {
-  const who = useStore((s) => s.profiles[p.user_id]);
+  const who = useStore((s) => (p.user_id ? s.profiles[p.user_id] : undefined));
   const unread = owner ? p.unread_owner : p.unread_user;
   return (
     <li>
@@ -106,7 +106,7 @@ function ProblemRow({ p, owner, onOpen }: { p: Problem; owner: boolean; onOpen: 
             {p.title}
           </b>
           <small>
-            {KIND[p.kind]} · {owner && who ? `@${who.username} · ` : ""}
+            {KIND[p.kind]} · {owner && (who ? `@${who.username} · ` : p.contact_email ? `${p.contact_email} (sin cuenta) · ` : "")}
             {when(p.updated_at)}
           </small>
         </div>
@@ -209,9 +209,15 @@ function ProblemThread({ problem: p, owner, onBack, onChange }: { problem: Probl
       </button>
       <h1 className="prob-title">{p.title}</h1>
       <p className="hint">
-        {KIND[p.kind]} · {owner && profiles[p.user_id] ? `@${profiles[p.user_id].username} · ` : ""}
+        {KIND[p.kind]} · {owner && p.user_id && profiles[p.user_id] ? `@${profiles[p.user_id].username} · ` : ""}
         {when(p.created_at)} · <span className={`prob-status st-${p.status}`}>{STATUS[p.status]}</span>
       </p>
+      {owner && !p.user_id && p.contact_email && (
+        <p className="hint">
+          Lo mandó sin cuenta desde la pantalla de inicio: no ve las respuestas de acá. Escribile a{" "}
+          <a href={`mailto:${p.contact_email}?subject=${encodeURIComponent(`Fogón: ${p.title}`)}`}>{p.contact_email}</a>.
+        </p>
+      )}
       {owner && info.length > 0 && (
         <p className="hint prob-info">
           {info.map(([k, v]) => (
@@ -250,13 +256,13 @@ function ProblemThread({ problem: p, owner, onBack, onChange }: { problem: Probl
       <div className="prob-thread">
         {msgs.map((m) => {
           const fromOwner = m.author_id === FOGON_OWNER;
-          const a = profiles[m.author_id];
+          const a = m.author_id ? profiles[m.author_id] : undefined;
           return (
             <div key={m.id} className={`prob-msg${fromOwner ? " from-owner" : ""}`}>
               <Avatar p={a} size="sm" />
               <div>
                 <b>
-                  {fromOwner ? "Gonza · creador de Fogón" : a?.display_name ?? "Usuario"} <small>{when(m.created_at)}</small>
+                  {fromOwner ? "Gonza · creador de Fogón" : a?.display_name ?? p.contact_email ?? "Usuario"} <small>{when(m.created_at)}</small>
                 </b>
                 <p>{m.body}</p>
               </div>

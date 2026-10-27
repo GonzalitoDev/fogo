@@ -1681,3 +1681,4 @@ button.tag-chip:hover { border-color: var(--accent); }
 .prob-msg p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .prob-reply { display: flex; gap: 8px; align-items: flex-end; max-width: 680px; }
 .prob-reply textarea { flex: 1; resize: vertical; }
+.auth-problem { justify-self: center; margin-top: 14px; font-size: 13px; text-align: center; }
