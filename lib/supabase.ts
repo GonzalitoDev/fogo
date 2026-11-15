@@ -10,6 +10,10 @@ export const configured = !!url && !!key;
 export const SUPABASE_URL = url;
 export const SUPABASE_KEY = key;
 
+// Cloudflare Turnstile (CAPTCHA invisible con IA). La site key es pública:
+// viaja al navegador. Si está vacía, el login queda sin verificación.
+export const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
+
 // link de "olvidé mi contraseña": hay que mirarlo antes de que Supabase limpie la URL
 export const RECOVERY_LINK = typeof window !== "undefined" && /type=recovery/.test(window.location.hash);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, TURNSTILE_SITE_KEY } from "@/lib/supabase";
 import { createProfile, getState, reportProblemPublic, setState, signOut, toast, verifyMfa, type ProblemKind } from "@/lib/store";
 import { KIND } from "./Problems";
 import { friendlyError, usernameFromEmail } from "@/lib/chat";
@@ -9,6 +9,7 @@ import { emailTypo, forgetAccount, maskEmail, savedAccounts, switchTo, type Save
 import { passwordStrength } from "@/lib/security";
 import { Ember, Icon } from "./Icon";
 import { Avatar, COLORS } from "./ui";
+import { Turnstile, type TurnstileHandle } from "./Turnstile";
 
 export function AuthScreen() {
   const [saved, setSaved] = useState<SavedAccount[]>([]);
@@ -24,6 +25,7 @@ export function AuthScreen() {
   const showTypo = !!typo && typoOk !== email;
   const passRef = useRef<HTMLInputElement>(null);
   const [problem, setProblem] = useState(false);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +36,11 @@ export function AuthScreen() {
       const problem = passwordStrength(pass, email).problem;
       if (problem) return setErr(problem);
     }
+    // Turnstile: si está configurado, pedimos el token antes de mandar (login/registro).
+    const captchaToken = turnstileRef.current?.getToken() ?? "";
+    if (TURNSTILE_SITE_KEY && mode !== "reset" && !captchaToken) {
+      return setErr("Completá la verificación para continuar.");
+    }
     setBusy(true);
     try {
       if (mode === "reset") {
@@ -41,10 +48,10 @@ export function AuthScreen() {
         if (error) throw error;
         setSent("reset");
       } else if (mode === "in") {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass, options: { captchaToken } });
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password: pass, options: { emailRedirectTo: location.origin + location.pathname + location.search } });
+        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password: pass, options: { emailRedirectTo: location.origin + location.pathname + location.search, captchaToken } });
         if (error) throw error;
         // Supabase no avisa si el email ya existe: devuelve un usuario sin identidades
         if (data.user && (data.user.identities?.length ?? 0) === 0) {
@@ -54,7 +61,7 @@ export function AuthScreen() {
         }
         if (!data.session) {
           // las cuentas nuevas quedan confirmadas solas: entramos directo
-          const r = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
+          const r = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass, options: { captchaToken } });
           if (r.error) setSent("confirm");
         }
       }
@@ -62,6 +69,8 @@ export function AuthScreen() {
       setErr(friendlyError(e));
     } finally {
       setBusy(false);
+      // el token de Turnstile es de un solo uso: pedimos uno nuevo para el próximo intento
+      turnstileRef.current?.reset();
     }
   };
 
@@ -209,6 +218,7 @@ export function AuthScreen() {
                   {err}
                 </div>
               )}
+              {TURNSTILE_SITE_KEY && mode !== "reset" && <Turnstile ref={turnstileRef} siteKey={TURNSTILE_SITE_KEY} />}
               <button className="btn primary" disabled={busy} style={{ height: 44 }}>
                 {busy ? "Un momento…" : mode === "in" ? "Entrar" : mode === "up" ? "Crear cuenta" : "Mandarme el link"}
               </button>
