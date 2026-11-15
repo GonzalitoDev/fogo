@@ -129,6 +129,7 @@ export function friendlyError(e: unknown): string {
   if (/rate limit/i.test(msg)) return "Demasiados intentos seguidos. Esperá un minuto y probá de nuevo.";
   if (/duplicate key.*username/i.test(msg) || /fogon_profiles_username_key/.test(msg)) return "Ese nombre de usuario ya está usado. Probá con otro.";
   if (/violates check constraint.*username/i.test(msg)) return "El usuario solo puede tener letras minúsculas, números, punto y guion bajo (2 a 32).";
+  if (/issued at future/i.test(msg)) return "El servidor se desincronizó un momento. Probá de nuevo en unos segundos.";
   if (/Failed to fetch|NetworkError/i.test(msg)) return "No hay conexión con el servidor. Revisá internet y probá de nuevo.";
   if (/row-level security/i.test(msg)) return "No tenés permiso para hacer eso.";
   if (/exceeded the maximum allowed size|Payload too large/i.test(msg)) return "La imagen pesa más de 10 MB.";
