@@ -6,6 +6,19 @@
 -- se crea con un nombre, un usuario, un color y una personalidad.
 -- ============================================================
 
+-- 0) Limpieza de una versión anterior (bot "aria" hardcodeado).
+drop trigger if exists fogon_aria_on_mention on public.fogon_messages;
+drop function if exists public.fogon_aria_on_mention();
+drop function if exists public.fogon_aria_ask(uuid, uuid, uuid, text);
+drop function if exists public.fogon_aria_poll();
+do $$
+begin
+  begin
+    perform cron.unschedule('fogon-aria-ai');
+  exception when others then null;
+  end;
+end $$;
+
 -- 1) Config de cada bot creado desde la UI.
 create table if not exists public.fogon_bots (
   id uuid primary key references public.fogon_profiles(id) on delete cascade,
